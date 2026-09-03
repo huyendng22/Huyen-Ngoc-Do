@@ -24,6 +24,7 @@ const CATEGORIES = [
   { id: "HD", label: "Hướng dẫn thao tác" },
   { id: "LOI", label: "Lỗi thường gặp" },
   { id: "CS", label: "Chính sách / Quy trình" },
+  { id: "335", label: "335" },
   { id: "KHAC", label: "Khác" },
 ];
 function getCategoryLabel(id) {
@@ -52,6 +53,8 @@ function App() {
   const [tab, setTab] = useState("kb");
   const [kbEntries, setKbEntries] = useState([]);
   const [loadingKb, setLoadingKb] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterCategory, setFilterCategory] = useState("ALL");
 
   const [form, setForm] = useState({ title: "", category: CATEGORIES[0].id, content: "" });
   const [entryMode, setEntryMode] = useState("single");
@@ -251,6 +254,13 @@ function App() {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   }
 
+  const filteredEntries = kbEntries.filter((e) => {
+    const matchesCategory = filterCategory === "ALL" || e.category === filterCategory;
+    const q = searchQuery.trim().toLowerCase();
+    const matchesQuery = !q || e.title.toLowerCase().includes(q) || e.content.toLowerCase().includes(q);
+    return matchesCategory && matchesQuery;
+  });
+
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
       <div style={{ background: "#12303F", color: "#F3F1EC", padding: "20px 28px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px" }}>
@@ -322,12 +332,37 @@ function App() {
 
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={{ fontSize: 13, color: "#6B6255", fontWeight: 600, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span>{loadingKb ? "Đang tải..." : `${kbEntries.length} mục đã nạp cho chatbot (dùng chung)`}</span>
+                <span>{loadingKb ? "Đang tải..." : `Hiển thị ${filteredEntries.length} / ${kbEntries.length} mục đã nạp cho chatbot (dùng chung)`}</span>
                 <button onClick={loadKb} style={{ background: "transparent", border: "1px solid #DDD7C9", borderRadius: 8, padding: "4px 10px", fontSize: 12, cursor: "pointer", color: "#12303F" }}>
                   🔄 Làm mới
                 </button>
               </div>
-              {kbEntries.map((e) => (
+
+              <div style={{ ...card, padding: 14, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                <input
+                  style={{ ...inputStyle, marginBottom: 0, flex: "1 1 220px" }}
+                  placeholder="🔎 Tìm theo câu hỏi hoặc câu trả lời..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+                <select style={{ ...inputStyle, marginBottom: 0, width: "auto", flex: "0 0 auto" }} value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}>
+                  <option value="ALL">Tất cả danh mục</option>
+                  {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label} ({c.id})</option>)}
+                </select>
+                {(searchQuery || filterCategory !== "ALL") && (
+                  <button onClick={() => { setSearchQuery(""); setFilterCategory("ALL"); }} style={{ background: "transparent", border: "1px solid #DDD7C9", borderRadius: 8, padding: "9px 12px", fontSize: 12.5, cursor: "pointer", color: "#B5652F", fontWeight: 700 }}>
+                    ✕ Xoá lọc
+                  </button>
+                )}
+              </div>
+
+              {!loadingKb && filteredEntries.length === 0 && (
+                <div style={{ ...card, textAlign: "center", color: "#8A8272", fontSize: 13, fontStyle: "italic" }}>
+                  Không tìm thấy mục nào khớp với bộ lọc/tìm kiếm hiện tại.
+                </div>
+              )}
+
+              {filteredEntries.map((e) => (
                 <div key={e.id} style={{ ...card, padding: "14px 16px", display: "flex", justifyContent: "space-between", gap: 12 }}>
                   <div style={{ flex: 1 }}>
                     <div style={miniLabel}>Câu hỏi</div>
