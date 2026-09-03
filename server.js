@@ -57,6 +57,7 @@ const CATEGORIES = [
   { id: "HD", label: "Hướng dẫn thao tác" },
   { id: "LOI", label: "Lỗi thường gặp" },
   { id: "CS", label: "Chính sách / Quy trình" },
+  { id: "335", label: "335" },
   { id: "KHAC", label: "Khác" },
 ];
 function getCategoryLabel(id) {
