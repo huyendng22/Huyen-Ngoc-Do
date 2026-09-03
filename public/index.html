@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Trợ lý hỗ trợ phần mềm</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: 'Segoe UI', 'IBM Plex Sans', sans-serif; background: #F3F1EC; color: #1E2A32; }
+  @keyframes spin { from { transform: rotate(0deg);} to { transform: rotate(360deg);} }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useRef } = React;
+
+const CATEGORIES = [
+  { id: "HD", label: "Hướng dẫn thao tác" },
+  { id: "LOI", label: "Lỗi thường gặp" },
+  { id: "CS", label: "Chính sách / Quy trình" },
+  { id: "KHAC", label: "Khác" },
+];
+function getCategoryLabel(id) {
+  const found = CATEGORIES.find((c) => c.id === id);
+  return found ? found.label : id;
+}
+function resolveCategoryId(raw, defaultId) {
+  const clean = String(raw || "").trim().toLowerCase();
+  if (!clean) return defaultId;
+  const byId = CATEGORIES.find((c) => c.id.toLowerCase() === clean);
+  if (byId) return byId.id;
+  const byLabel = CATEGORIES.find((c) => c.label.toLowerCase() === clean);
+  if (byLabel) return byLabel.id;
+  return defaultId;
+}
+const EXAMPLE_QUESTION = "Làm sao để đặt lại mật khẩu?";
+const DEFAULT_GREETING = "Chào bạn, tôi là chatbot hỗ trợ phần mềm. Hãy đặt câu hỏi, tôi sẽ trả lời dựa trên tài liệu hướng dẫn đã được nạp.";
+
+function authHeaders(adminToken) {
+  const h = { "Content-Type": "application/json" };
+  if (adminToken) h["x-admin-token"] = adminToken;
+  return h;
+}
+
+function App() {
+  const [tab, setTab] = useState("kb");
+  const [kbEntries, setKbEntries] = useState([]);
+  const [loadingKb, setLoadingKb] = useState(true);
+
+  const [form, setForm] = useState({ title: "", category: CATEGORIES[0].id, content: "" });
+  const [entryMode, setEntryMode] = useState("single");
+  const [bulkText, setBulkText] = useState("");
+  const [bulkCategory, setBulkCategory] = useState(CATEGORIES[0].id);
+  const [importResult, setImportResult] = useState(null);
+  const fileInputRef = useRef(null);
+
+  const [adminToken, setAdminToken] = useState(localStorage.getItem("adminToken") || "");
+  const [adminError, setAdminError] = useState("");
+
+  const [settings, setSettings] = useState({ greeting: DEFAULT_GREETING, expertEmail: "" });
+  const [settingsForm, setSettingsForm] = useState({ greeting: DEFAULT_GREETING, expertEmail: "" });
+  const [settingsSaved, setSettingsSaved] = useState(false);
+
+  const [escalations, setEscalations] = useState([]);
+
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const scrollRef = useRef(null);
+
+  useEffect(() => { loadKb(); loadSettings(); loadEscalations(); }, []);
+  useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [messages, loading]);
+
+  async function loadKb() {
+    try {
+      const r = await fetch("/api/kb");
+      const data = await r.json();
+      setKbEntries(data.entries || []);
+    } catch (e) {} finally { setLoadingKb(false); }
+  }
+  async function loadSettings() {
+    try {
+      const r = await fetch("/api/settings");
+      const data = await r.json();
+      setSettings(data);
+      setSettingsForm(data);
+    } catch (e) {}
+  }
+  async function loadEscalations() {
+    try {
+      const r = await fetch("/api/escalations");
+      const data = await r.json();
+      setEscalations(data || []);
+    } catch (e) {}
+  }
+
+  async function saveKbEntries(nextEntries) {
+    setAdminError("");
+    const r = await fetch("/api/kb", { method: "PUT", headers: authHeaders(adminToken), body: JSON.stringify({ entries: nextEntries }) });
+    if (r.status === 401) { setAdminError("Sai mã quản trị — vào cuối tab này để nhập lại."); return false; }
+    setKbEntries(nextEntries);
+    return true;
+  }
+
+  async function addEntry() {
+    if (!form.title.trim() || !form.content.trim()) return;
+    const entry = { id: String(Date.now()), ...form };
+    const ok = await saveKbEntries([entry, ...kbEntries]);
+    if (ok) setForm({ title: "", category: CATEGORIES[0].id, content: "" });
+  }
+
+  async function removeEntry(id) {
+    await saveKbEntries(kbEntries.filter((e) => e.id !== id));
+  }
+
+  function parseBulkImport(text, defaultCategoryId) {
+    const entries = [];
+    const rawLines = text.split(/\r?\n/);
+    const looksTabular = rawLines.some((l) => l.includes("\t"));
+    if (looksTabular) {
+      rawLines.forEach((line) => {
+        if (!line.trim()) return;
+        const cols = line.split("\t").map((c) => c.trim());
+        if (/^(câu hỏi|question)$/i.test(cols[0])) return;
+        if (cols.length >= 3 && cols[0] && cols[2]) {
+          entries.push({ title: cols[0], category: resolveCategoryId(cols[1], defaultCategoryId), content: cols[2] });
+        } else if (cols.length === 2 && cols[0] && cols[1]) {
+          entries.push({ title: cols[0], category: defaultCategoryId, content: cols[1] });
+        }
+      });
+      return entries;
+    }
+    const blocks = text.split(/\n\s*\n/);
+    blocks.forEach((block) => {
+      const qMatch = block.match(/câu hỏi\s*:\s*([\s\S]*?)(?:\n(?:danh mục|câu trả lời)\s*:|$)/i);
+      const cMatch = block.match(/danh mục\s*:\s*([\s\S]*?)(?:\ncâu trả lời\s*:|$)/i);
+      const aMatch = block.match(/câu trả lời\s*:\s*([\s\S]*)/i);
+      const question = qMatch ? qMatch[1].trim() : "";
+      const answer = aMatch ? aMatch[1].trim() : "";
+      const category = cMatch ? resolveCategoryId(cMatch[1], defaultCategoryId) : defaultCategoryId;
+      if (question && answer) entries.push({ title: question, category, content: answer });
+    });
+    return entries;
+  }
+
+  async function importEntries(parsed, source) {
+    if (parsed.length === 0) { setImportResult({ added: 0, error: true, source }); return; }
+    setAdminError("");
+    const r = await fetch("/api/kb/import", { method: "POST", headers: authHeaders(adminToken), body: JSON.stringify({ entries: parsed }) });
+    if (r.status === 401) { setAdminError("Sai mã quản trị — vào cuối tab này để nhập lại."); return; }
+    const data = await r.json();
+    if (data.ok) {
+      setKbEntries(data.kb.entries);
+      setImportResult({ added: data.added, error: false, source });
+    } else {
+      setImportResult({ added: 0, error: true, source });
+    }
+  }
+
+  function handleBulkImport() {
+    const parsed = parseBulkImport(bulkText, bulkCategory);
+    importEntries(parsed, "paste").then(() => setBulkText(""));
+  }
+
+  async function handleExcelFile(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const workbook = XLSX.read(arrayBuffer, { type: "array" });
+      const sheetName = workbook.SheetNames.includes("Dữ liệu") ? "Dữ liệu" : workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+      const parsed = [];
+      rows.forEach((row, idx) => {
+        if (idx === 0) return;
+        const question = String(row[0] || "").trim();
+        const rawCategory = String(row[1] || "").trim();
+        const answer = String(row[2] || "").trim();
+        if (!question || !answer) return;
+        if (question === EXAMPLE_QUESTION) return;
+        parsed.push({ title: question, category: resolveCategoryId(rawCategory, CATEGORIES[CATEGORIES.length - 1].id), content: answer });
+      });
+      await importEntries(parsed, "excel");
+    } catch (err) {
+      setImportResult({ added: 0, error: true, source: "excel" });
+    } finally {
+      event.target.value = "";
+    }
+  }
+
+  async function saveSettings() {
+    setAdminError("");
+    const r = await fetch("/api/settings", { method: "PUT", headers: authHeaders(adminToken), body: JSON.stringify(settingsForm) });
+    if (r.status === 401) { setAdminError("Sai mã quản trị — vào cuối tab này để nhập lại."); return; }
+    const data = await r.json();
+    setSettings(data.settings);
+    setSettingsSaved(true);
+    setTimeout(() => setSettingsSaved(false), 2000);
+  }
+
+  function saveAdminToken(value) {
+    setAdminToken(value);
+    localStorage.setItem("adminToken", value);
+  }
+
+  async function escalateQuestion(index) {
+    const msg = messages[index];
+    if (!msg) return;
+    setMessages((prev) => prev.map((m, i) => (i === index ? { ...m, escalating: true } : m)));
+    try {
+      const r = await fetch("/api/escalate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: msg.question || "" }) });
+      const data = await r.json();
+      setMessages((prev) => prev.map((m, i) => (i === index ? { ...m, escalating: false, escalated: !!data.ok, escalateError: data.ok ? "" : (data.error || "Chưa gửi được.") } : m)));
+      loadEscalations();
+    } catch (e) {
+      setMessages((prev) => prev.map((m, i) => (i === index ? { ...m, escalating: false, escalateError: "Lỗi kết nối." } : m)));
+    }
+  }
+
+  async function sendMessage() {
+    const question = input.trim();
+    if (!question || loading) return;
+    const newMessages = [...messages, { role: "user", text: question }];
+    setMessages(newMessages);
+    setInput("");
+    setLoading(true);
+    try {
+      const history = newMessages.map((m) => ({ role: m.role, text: m.text }));
+      const r = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ history }) });
+      const data = await r.json();
+      if (data.ok) {
+        setMessages((prev) => [...prev, { role: "assistant", text: data.text, needsEscalation: data.needsEscalation, question, escalated: false }]);
+      } else {
+        setMessages((prev) => [...prev, { role: "assistant", text: "Đã có lỗi: " + (data.error || "không rõ nguyên nhân.") }]);
+      }
+    } catch (e) {
+      setMessages((prev) => [...prev, { role: "assistant", text: "Đã có lỗi khi kết nối tới hệ thống trả lời. Vui lòng thử lại." }]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleKeyDown(e) {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  }
+
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+      <div style={{ background: "#12303F", color: "#F3F1EC", padding: "20px 28px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px" }}>
+        <div>
+          <div style={{ fontSize: "20px", fontWeight: 700 }}>Trợ lý hỗ trợ phần mềm</div>
+          <div style={{ fontSize: "13px", color: "#9FB4BE", marginTop: "2px" }}>Dùng chung cho đội ngũ chuyên gia hỗ trợ</div>
+        </div>
+        <div style={{ display: "flex", gap: "4px", background: "rgba(255,255,255,0.08)", borderRadius: "10px", padding: "4px" }}>
+          <TabButton active={tab === "kb"} onClick={() => setTab("kb")} label="📚 Quản lý tài liệu" />
+          <TabButton active={tab === "chat"} onClick={() => setTab("chat")} label="💬 Chat thử nghiệm" />
+          <TabButton active={tab === "settings"} onClick={() => setTab("settings")} label="⚙️ Cài đặt" />
+        </div>
+      </div>
+
+      <div style={{ flex: 1, padding: "24px 20px", display: "flex", justifyContent: "center" }}>
+        {tab === "kb" ? (
+          <div style={{ width: "100%", maxWidth: "760px", display: "flex", flexDirection: "column", gap: "20px" }}>
+            <div style={card}>
+              <div style={{ display: "flex", gap: "8px", marginBottom: "16px", alignItems: "center" }}>
+                <div style={{ display: "flex", gap: "6px", background: "#F3F1EC", padding: "4px", borderRadius: "9px", flex: 1 }}>
+                  <ModeButton active={entryMode === "single"} onClick={() => setEntryMode("single")} label="✏️ Thêm từng câu" />
+                  <ModeButton active={entryMode === "bulk"} onClick={() => setEntryMode("bulk")} label="📋 Nhập hàng loạt" />
+                </div>
+                <input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={handleExcelFile} style={{ display: "none" }} />
+                <button onClick={() => fileInputRef.current && fileInputRef.current.click()} style={darkButton}>⬆️ Nhập file Excel</button>
+              </div>
+
+              {importResult && importResult.source === "excel" && (
+                <div style={{ marginBottom: 14, fontSize: 13, fontWeight: 600, padding: "8px 12px", borderRadius: 8, color: importResult.error ? "#B3261E" : "#3D7A4E", background: importResult.error ? "#FBEAE8" : "#EAF5EC" }}>
+                  {importResult.error ? "Không đọc được dữ liệu hợp lệ từ file Excel." : `Đã nhập thành công ${importResult.added} mục từ file Excel.`}
+                </div>
+              )}
+
+              {entryMode === "single" ? (
+                <>
+                  <div style={sectionTitle}>📄 Thêm câu hỏi &amp; câu trả lời</div>
+                  <label style={labelStyle}>Câu hỏi</label>
+                  <input style={inputStyle} placeholder="VD: Làm sao để tạo phiếu đánh giá KPI?" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
+                  <label style={labelStyle}>Danh mục</label>
+                  <select style={inputStyle} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+                    {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label} ({c.id})</option>)}
+                  </select>
+                  <label style={labelStyle}>Câu trả lời</label>
+                  <textarea style={{ ...inputStyle, minHeight: 100, resize: "vertical" }} placeholder="Nhập câu trả lời chi tiết..." value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} />
+                  <button onClick={addEntry} style={primaryButtonStyle}>➕ Thêm vào tài liệu</button>
+                </>
+              ) : (
+                <>
+                  <div style={sectionTitle}>📋 Nhập hàng loạt Câu hỏi - Câu trả lời</div>
+                  <div style={{ fontSize: 12.5, color: "#6B6255", lineHeight: 1.6, marginBottom: 10 }}>
+                    Dán từ Excel: mỗi dòng 1 cặp, cách nhau bởi Tab — <strong>Câu hỏi</strong> [Tab] <strong>Mã danh mục</strong> [Tab] <strong>Câu trả lời</strong> (HD/LOI/CS/KHAC).
+                  </div>
+                  <label style={labelStyle}>Danh mục mặc định</label>
+                  <select style={inputStyle} value={bulkCategory} onChange={(e) => setBulkCategory(e.target.value)}>
+                    {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label} ({c.id})</option>)}
+                  </select>
+                  <label style={labelStyle}>Dán dữ liệu vào đây</label>
+                  <textarea style={{ ...inputStyle, minHeight: 160, resize: "vertical", fontFamily: "monospace", fontSize: 12.5 }} value={bulkText} onChange={(e) => { setBulkText(e.target.value); setImportResult(null); }} />
+                  <button onClick={handleBulkImport} style={primaryButtonStyle}>📋 Nhập vào tài liệu</button>
+                  {importResult && importResult.source === "paste" && (
+                    <div style={{ marginTop: 10, fontSize: 13, fontWeight: 600, color: importResult.error ? "#B3261E" : "#3D7A4E" }}>
+                      {importResult.error ? "Không nhận diện được cặp Câu hỏi - Câu trả lời nào." : `Đã nhập thành công ${importResult.added} mục.`}
+                    </div>
+                  )}
+                </>
+              )}
+              {adminError && <div style={{ marginTop: 10, fontSize: 12.5, color: "#B3261E" }}>{adminError}</div>}
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ fontSize: 13, color: "#6B6255", fontWeight: 600, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span>{loadingKb ? "Đang tải..." : `${kbEntries.length} mục đã nạp cho chatbot (dùng chung)`}</span>
+                <button onClick={loadKb} style={{ background: "transparent", border: "1px solid #DDD7C9", borderRadius: 8, padding: "4px 10px", fontSize: 12, cursor: "pointer", color: "#12303F" }}>
+                  🔄 Làm mới
+                </button>
+              </div>
+              {kbEntries.map((e) => (
+                <div key={e.id} style={{ ...card, padding: "14px 16px", display: "flex", justifyContent: "space-between", gap: 12 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={miniLabel}>Câu hỏi</div>
+                    <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{e.title}</div>
+                    <div style={pill}>{getCategoryLabel(e.category)}</div>
+                    <div style={miniLabel}>Câu trả lời</div>
+                    <div style={{ fontSize: 13, color: "#4A443B", lineHeight: 1.5 }}>{e.content}</div>
+                  </div>
+                  <button onClick={() => removeEntry(e.id)} style={{ background: "transparent", border: "none", cursor: "pointer", color: "#B5652F", height: "fit-content", fontSize: 16 }}>🗑️</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : tab === "chat" ? (
+          <div style={{ width: "100%", maxWidth: 620, ...card, display: "flex", flexDirection: "column", height: 560, padding: 0 }}>
+            <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+              {messages.length === 0 && <div style={bubbleAssistant}>{settings.greeting || DEFAULT_GREETING}</div>}
+              {messages.map((m, i) => (
+                <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: m.role === "user" ? "flex-end" : "flex-start", gap: 6 }}>
+                  <div style={m.role === "user" ? bubbleUser : bubbleAssistant}>{m.text}</div>
+                  {m.role === "assistant" && m.needsEscalation && (
+                    <button onClick={() => escalateQuestion(i)} disabled={m.escalated || m.escalating} style={escalateBtn(m.escalated)}>
+                      {m.escalating ? "⏳ Đang gửi..." : m.escalated ? "✅ Đã gửi cho chuyên gia" : "✉️ Gửi câu hỏi này cho chuyên gia"}
+                    </button>
+                  )}
+                  {m.role === "assistant" && m.escalateError && <div style={{ fontSize: 11, color: "#B3261E" }}>{m.escalateError}</div>}
+                </div>
+              ))}
+              {loading && <div style={{ alignSelf: "flex-start", color: "#6B6255", fontSize: 13 }}>⏳ Đang trả lời...</div>}
+            </div>
+            <div style={{ display: "flex", gap: 8, padding: 14, borderTop: "1px solid #EEE9DD" }}>
+              <input style={{ ...inputStyle, marginBottom: 0, flex: 1 }} placeholder="Nhập câu hỏi của bạn..." value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown} />
+              <button onClick={sendMessage} disabled={loading} style={{ ...primaryButtonStyle, width: "auto", margin: 0, padding: "0 16px" }}>➤</button>
+            </div>
+          </div>
+        ) : (
+          <div style={{ width: "100%", maxWidth: 760, display: "flex", flexDirection: "column", gap: 20 }}>
+            <div style={card}>
+              <div style={sectionTitle}>💬 Câu chào mở đầu</div>
+              <textarea style={{ ...inputStyle, minHeight: 90, resize: "vertical" }} value={settingsForm.greeting} onChange={(e) => setSettingsForm({ ...settingsForm, greeting: e.target.value })} />
+
+              <div style={{ ...sectionTitle, marginTop: 18 }}>✉️ Email chuyên gia hỗ trợ (dự phòng)</div>
+              <div style={{ fontSize: 12.5, color: "#6B6255", marginBottom: 6 }}>Có thể kết nối Zalo OA sau (xem README). Trong lúc chưa có Zalo, câu hỏi chưa trả lời được sẽ gửi qua email này (nếu điền) hoặc chỉ lưu vào nhật ký bên dưới.</div>
+              <input style={inputStyle} type="email" placeholder="vd: hotro@congty.vn" value={settingsForm.expertEmail} onChange={(e) => setSettingsForm({ ...settingsForm, expertEmail: e.target.value })} />
+
+              <button onClick={saveSettings} style={primaryButtonStyle}>{settingsSaved ? "✅ Đã lưu" : "💾 Lưu cài đặt"}</button>
+              {adminError && <div style={{ marginTop: 10, fontSize: 12.5, color: "#B3261E" }}>{adminError}</div>}
+            </div>
+
+            <div style={card}>
+              <div style={sectionTitle}>✉️ Câu hỏi đã gửi chuyên gia ({escalations.length})</div>
+              {escalations.length === 0 ? (
+                <div style={{ fontSize: 13, color: "#8A8272", fontStyle: "italic" }}>Chưa có câu hỏi nào.</div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {escalations.map((t) => (
+                    <div key={t.id} style={{ background: "#F3F1EC", borderRadius: 10, padding: "10px 12px" }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 600 }}>{t.question}</div>
+                      <div style={{ fontSize: 11, color: "#8A8272", marginTop: 2 }}>{new Date(t.timestamp).toLocaleString("vi-VN")} · Kênh: {t.sentVia}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div style={card}>
+              <div style={sectionTitle}>🔑 Mã quản trị</div>
+              <div style={{ fontSize: 12.5, color: "#6B6255", marginBottom: 6 }}>
+                Cần để sửa tài liệu / cài đặt (nếu server có bật ADMIN_TOKEN). Mỗi trình duyệt nhập 1 lần.
+              </div>
+              <input style={inputStyle} type="password" placeholder="Nhập mã quản trị nếu có" value={adminToken} onChange={(e) => saveAdminToken(e.target.value)} />
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TabButton({ active, onClick, label }) {
+  return <button onClick={onClick} style={{ padding: "8px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, background: active ? "#F3F1EC" : "transparent", color: active ? "#12303F" : "#CBD8DD" }}>{label}</button>;
+}
+function ModeButton({ active, onClick, label }) {
+  return <button onClick={onClick} style={{ flex: 1, padding: "8px 10px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 700, background: active ? "#FFFFFF" : "transparent", color: active ? "#12303F" : "#8A8272" }}>{label}</button>;
+}
+function escalateBtn(escalated) {
+  return { border: "1px solid #DDD7C9", background: escalated ? "#EAF5EC" : "#FFFFFF", color: escalated ? "#3D7A4E" : "#B5652F", borderRadius: 999, padding: "5px 12px", fontSize: 12, fontWeight: 700, cursor: escalated ? "default" : "pointer" };
+}
+
+const card = { background: "#FFFFFF", border: "1px solid #DDD7C9", borderRadius: 14, padding: 20 };
+const sectionTitle = { fontSize: 15, fontWeight: 700, marginBottom: 4 };
+const miniLabel = { fontSize: 10.5, fontWeight: 700, color: "#8A8272", textTransform: "uppercase", letterSpacing: "0.03em" };
+const pill = { display: "inline-block", fontSize: 11, color: "#B5652F", background: "#F6E9DE", borderRadius: 999, padding: "2px 8px", margin: "2px 0 8px" };
+const labelStyle = { display: "block", fontSize: 12, fontWeight: 600, color: "#6B6255", marginBottom: 5, marginTop: 12 };
+const inputStyle = { width: "100%", border: "1px solid #DDD7C9", borderRadius: 8, padding: "9px 11px", fontSize: 14, fontFamily: "inherit", marginBottom: 4, background: "#FCFBF8", outline: "none" };
+const primaryButtonStyle = { width: "100%", marginTop: 16, background: "#B5652F", color: "#FFFFFF", border: "none", borderRadius: 8, padding: 10, fontSize: 14, fontWeight: 700, cursor: "pointer" };
+const darkButton = { whiteSpace: "nowrap", background: "#12303F", color: "#FFFFFF", border: "none", borderRadius: 8, padding: "0 14px", height: 38, fontSize: 12.5, fontWeight: 700, cursor: "pointer" };
+const bubbleUser = { maxWidth: "80%", background: "#12303F", color: "#F3F1EC", padding: "10px 14px", borderRadius: 14, borderBottomRightRadius: 4, fontSize: 14, lineHeight: 1.55, whiteSpace: "pre-wrap" };
+const bubbleAssistant = { maxWidth: "80%", background: "#F3F1EC", color: "#1E2A32", padding: "10px 14px", borderRadius: 14, borderBottomLeftRadius: 4, fontSize: 14, lineHeight: 1.55, whiteSpace: "pre-wrap" };
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
