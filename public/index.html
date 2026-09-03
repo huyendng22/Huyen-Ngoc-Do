@@ -17,7 +17,7 @@
 <body>
 <div id="root"></div>
 
-<script type="text/babel" data-presets="react">
+<script type="text/plain" id="app-source">
 const { useState, useEffect, useRef } = React;
 
 const CATEGORIES = [
@@ -429,6 +429,19 @@ const bubbleUser = { maxWidth: "80%", background: "#12303F", color: "#F3F1EC", p
 const bubbleAssistant = { maxWidth: "80%", background: "#F3F1EC", color: "#1E2A32", padding: "10px 14px", borderRadius: 14, borderBottomLeftRadius: 4, fontSize: 14, lineHeight: 1.55, whiteSpace: "pre-wrap" };
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+
+<script>
+  // Chuyển JSX/ES6 sang JS thuần bằng Babel, ép dùng "classic runtime"
+  // (React.createElement) để tránh Babel tự chèn "import" — thứ không
+  // chạy được trong thẻ <script> thường (không phải type="module").
+  var sourceCode = document.getElementById("app-source").textContent;
+  var compiled = Babel.transform(sourceCode, {
+    presets: [["react", { runtime: "classic" }]],
+  }).code;
+  var appScript = document.createElement("script");
+  appScript.textContent = compiled;
+  document.body.appendChild(appScript);
 </script>
 </body>
 </html>
