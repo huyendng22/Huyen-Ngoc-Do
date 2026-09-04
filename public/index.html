@@ -55,6 +55,43 @@ function normalizeLineBreaks(str) {
   return String(str || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 }
 
+// ===== Tìm kiếm cục bộ theo từ khoá (không dùng AI) =====
+// So khớp ký tự thô (kiểu Fuse.js) không hợp với tiếng Việt vì câu hỏi diễn
+// đạt lại khác chút là bị lệch điểm rất nhiều. Cách này bỏ dấu, bỏ từ đệm rồi
+// so khớp theo từ, ổn định hơn nhiều cho câu hỏi tiếng Việt viết tự do.
+const VN_STOPWORDS = new Set([
+  "la","cua","va","cac","nhung","co","duoc","the","nao","cho","de","khi","toi","ban","minh",
+  "lam","sao","gi","nhu","nay","do","mot","voi","ve","tai","hay","hoac","da","se","phai","can",
+  "muon","xin","vay","oi","nhe","trong","nhu","o","ra","vao","tu","den","neu","thi","ma","hon",
+  "nhat","nhung","nen","bi","bang","theo",
+]);
+function normalizeVN(str) {
+  return String(str || "")
+    .toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+function tokenizeVN(str) {
+  return normalizeVN(str).split(" ").filter((w) => w && w.length > 1 && !VN_STOPWORDS.has(w));
+}
+function scoreKbEntry(queryTokens, entry) {
+  if (queryTokens.length === 0) return 0;
+  const titleTokens = new Set(tokenizeVN(entry.title));
+  const contentTokens = new Set(tokenizeVN(entry.content));
+  let titleHits = 0;
+  let contentHits = 0;
+  queryTokens.forEach((t) => {
+    if (titleTokens.has(t)) titleHits += 1;
+    else if (contentTokens.has(t)) contentHits += 1;
+  });
+  return (titleHits * 1.0 + contentHits * 0.4) / queryTokens.length;
+}
+// Ngưỡng "đủ tin cậy" để trả lời thẳng từ tài liệu, không cần gọi AI (0 = không khớp gì, 1 = khớp hết).
+const KB_MATCH_THRESHOLD = 0.5;
+
 function App() {
   function renderMessageContent(text) {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
@@ -94,9 +131,6 @@ function App() {
 
   const [adminToken, setAdminToken] = useState(localStorage.getItem("adminToken") || "");
   const [adminError, setAdminError] = useState("");
-
-  const backupInputRef = useRef(null);
-  const [backupResult, setBackupResult] = useState(null);
 
   const [settings, setSettings] = useState({ greeting: DEFAULT_GREETING, expertEmail: "" });
   const [settingsForm, setSettingsForm] = useState({ greeting: DEFAULT_GREETING, expertEmail: "" });
@@ -338,55 +372,6 @@ function App() {
     localStorage.setItem("adminToken", value);
   }
 
-  // ============ SAO LƯU / KHÔI PHỤC (đề phòng mất dữ liệu khi Render khởi động lại container) ============
-  function downloadBackup() {
-    const payload = {
-      backupType: "chatbot-ho-tro-website",
-      exportedAt: new Date().toISOString(),
-      kb: { entries: kbEntries },
-      settings,
-    };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
-    a.href = url;
-    a.download = `sao-luu-du-lieu-chatbot-${stamp}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }
-
-  async function restoreBackup(event) {
-    const file = event.target.files && event.target.files[0];
-    if (!file) return;
-    setBackupResult(null);
-    try {
-      const text = await file.text();
-      const parsed = JSON.parse(text);
-      const entries = parsed?.kb?.entries;
-      if (!Array.isArray(entries)) throw new Error("File sao lưu không đúng định dạng (thiếu kb.entries).");
-
-      const okKb = await saveKbEntries(entries);
-      if (!okKb) { setBackupResult({ ok: false, message: "Sai mã quản trị — không khôi phục được." }); return; }
-
-      if (parsed?.settings) {
-        const r = await fetch("/api/settings", { method: "PUT", headers: authHeaders(adminToken), body: JSON.stringify(parsed.settings) });
-        if (r.ok) {
-          const data = await r.json();
-          setSettings(data.settings);
-          setSettingsForm(data.settings);
-        }
-      }
-      setBackupResult({ ok: true, message: `Đã khôi phục ${entries.length} mục tài liệu${parsed?.settings ? " + cài đặt" : ""} từ file sao lưu.` });
-    } catch (err) {
-      setBackupResult({ ok: false, message: err.message || "Không đọc được file sao lưu." });
-    } finally {
-      event.target.value = "";
-    }
-  }
-
   async function escalateQuestion(index) {
     const msg = messages[index];
     if (!msg) return;
@@ -401,24 +386,72 @@ function App() {
     }
   }
 
-  async function sendMessage() {
+  function matchKb(query) {
+    const queryTokens = tokenizeVN(query);
+    if (!kbEntries || kbEntries.length === 0 || queryTokens.length === 0) return null;
+    let best = null;
+    kbEntries.forEach((entry) => {
+      const s = scoreKbEntry(queryTokens, entry);
+      if (!best || s > best.score) best = { entry, score: s };
+    });
+    if (!best || best.score < KB_MATCH_THRESHOLD) return null;
+    return best.entry;
+  }
+
+  function sendMessage() {
     const question = input.trim();
     if (!question || loading) return;
-    const newMessages = [...messages, { role: "user", text: question }];
-    setMessages(newMessages);
+    setMessages((prev) => [...prev, { role: "user", text: question }]);
     setInput("");
+
+    const matched = matchKb(question);
+    if (matched) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          source: "kb",
+          text: matched.content,
+          matchedTitle: matched.title,
+          videoUrl: matched.videoUrl || "",
+          imageUrl: matched.imageUrl || "",
+          question,
+        },
+      ]);
+      return;
+    }
+
+    setMessages((prev) => [
+      ...prev,
+      { role: "assistant", source: "nomatch", text: "🔍 Không tìm thấy nội dung phù hợp trong tài liệu đã nạp.", question },
+    ]);
+  }
+
+  async function askAI(index) {
+    const msg = messages[index];
+    if (!msg || !msg.question) return;
+    setMessages((prev) => prev.map((m, i) => (i === index ? { ...m, asking: true } : m)));
     setLoading(true);
     try {
-      const history = newMessages.map((m) => ({ role: m.role, text: m.text }));
+      const priorMessages = messages
+        .slice(0, index)
+        .filter((m) => !(m.role === "assistant" && (m.source === "nomatch" || m.source === "error")));
+      const history = [...priorMessages.map((m) => ({ role: m.role, text: m.text })), { role: "user", text: msg.question }];
       const r = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ history }) });
       const data = await r.json();
       if (data.ok) {
-        setMessages((prev) => [...prev, { role: "assistant", text: data.text, needsEscalation: data.needsEscalation, question, escalated: false }]);
+        setMessages((prev) =>
+          prev.map((m, i) =>
+            i === index
+              ? { role: "assistant", source: "ai", text: data.text, needsEscalation: data.needsEscalation, question: msg.question, escalated: false, asking: false }
+              : m
+          )
+        );
       } else {
-        setMessages((prev) => [...prev, { role: "assistant", text: "Đã có lỗi: " + (data.error || "không rõ nguyên nhân.") }]);
+        setMessages((prev) => prev.map((m, i) => (i === index ? { ...m, source: "error", asking: false, text: "Đã có lỗi: " + (data.error || "không rõ nguyên nhân.") } : m)));
       }
     } catch (e) {
-      setMessages((prev) => [...prev, { role: "assistant", text: "Đã có lỗi khi kết nối tới hệ thống trả lời. Vui lòng thử lại." }]);
+      setMessages((prev) => prev.map((m, i) => (i === index ? { ...m, source: "error", asking: false, text: "Đã có lỗi khi kết nối tới hệ thống trả lời. Vui lòng thử lại." } : m)));
     } finally {
       setLoading(false);
     }
@@ -610,12 +643,47 @@ function App() {
           </div>
         ) : tab === "chat" ? (
           <div style={{ width: "100%", maxWidth: 620, ...card, display: "flex", flexDirection: "column", height: 560, padding: 0 }}>
+            <div style={{ padding: "10px 20px", borderBottom: "1px solid #EEE9DD", fontSize: 11.5, color: "#8A8272" }}>
+              💡 Chatbot tìm câu trả lời có sẵn trong tài liệu trước (miễn phí, tức thì) — chỉ gọi AI khi bạn chủ động bấm "Hỏi AI".
+            </div>
             <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
               {messages.length === 0 && <div style={bubbleAssistant}>{settings.greeting || DEFAULT_GREETING}</div>}
               {messages.map((m, i) => (
-                <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: m.role === "user" ? "flex-end" : "flex-start", gap: 6 }}>
-                  <div style={m.role === "user" ? bubbleUser : bubbleAssistant}>{m.role === "assistant" ? renderMessageContent(m.text) : m.text}</div>
-                  {m.role === "assistant" && m.needsEscalation && (
+                <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: m.role === "user" ? "flex-end" : "flex-start", gap: 6, maxWidth: "100%" }}>
+                  {m.role === "assistant" && m.source === "kb" && (
+                    <div style={{ fontSize: 10.5, fontWeight: 700, color: "#3D7A4E", textTransform: "uppercase", letterSpacing: "0.03em" }}>🔍 Từ tài liệu — không dùng AI</div>
+                  )}
+                  {m.role === "assistant" && m.source === "ai" && (
+                    <div style={{ fontSize: 10.5, fontWeight: 700, color: "#B5652F", textTransform: "uppercase", letterSpacing: "0.03em" }}>🤖 Claude AI</div>
+                  )}
+                  <div style={m.role === "user" ? bubbleUser : bubbleAssistant}>
+                    {m.role === "assistant" ? renderMessageContent(m.text) : m.text}
+                    {m.role === "assistant" && m.source === "kb" && m.videoUrl && (
+                      <div style={{ marginTop: 8 }}>
+                        <a href={m.videoUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, color: "inherit", fontWeight: 700 }}>🎥 Video hướng dẫn ↗</a>
+                      </div>
+                    )}
+                    {m.role === "assistant" && m.source === "kb" && m.imageUrl && (
+                      <img src={m.imageUrl} alt={m.matchedTitle || "Hình minh hoạ"} style={{ maxWidth: "100%", maxHeight: 200, borderRadius: 8, display: "block", marginTop: 8 }} onError={(e) => { e.target.style.display = "none"; }} />
+                    )}
+                  </div>
+
+                  {m.role === "assistant" && (m.source === "nomatch" || m.source === "error") && (
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button onClick={() => askAI(i)} disabled={m.asking} style={escalateBtn(false)}>
+                        {m.asking ? "⏳ Đang hỏi AI..." : "🤖 Hỏi AI (Claude)"}
+                      </button>
+                      <button onClick={() => escalateQuestion(i)} disabled={m.escalated || m.escalating} style={escalateBtn(m.escalated)}>
+                        {m.escalating ? "⏳ Đang gửi..." : m.escalated ? "✅ Đã gửi cho chuyên gia" : "✉️ Gửi câu hỏi cho chuyên gia"}
+                      </button>
+                    </div>
+                  )}
+                  {m.role === "assistant" && m.source === "kb" && (
+                    <button onClick={() => askAI(i)} disabled={m.asking} style={{ background: "transparent", border: "none", color: "#8A8272", fontSize: 11.5, textDecoration: "underline", cursor: "pointer", padding: 0 }}>
+                      {m.asking ? "⏳ Đang hỏi AI..." : "Chưa đúng ý bạn? Hỏi AI thêm"}
+                    </button>
+                  )}
+                  {m.role === "assistant" && m.source === "ai" && m.needsEscalation && (
                     <button onClick={() => escalateQuestion(i)} disabled={m.escalated || m.escalating} style={escalateBtn(m.escalated)}>
                       {m.escalating ? "⏳ Đang gửi..." : m.escalated ? "✅ Đã gửi cho chuyên gia" : "✉️ Gửi câu hỏi này cho chuyên gia"}
                     </button>
@@ -623,7 +691,7 @@ function App() {
                   {m.role === "assistant" && m.escalateError && <div style={{ fontSize: 11, color: "#B3261E" }}>{m.escalateError}</div>}
                 </div>
               ))}
-              {loading && <div style={{ alignSelf: "flex-start", color: "#6B6255", fontSize: 13 }}>⏳ Đang trả lời...</div>}
+              {loading && <div style={{ alignSelf: "flex-start", color: "#6B6255", fontSize: 13 }}>⏳ Đang hỏi AI...</div>}
             </div>
             <div style={{ display: "flex", gap: 8, padding: 14, borderTop: "1px solid #EEE9DD" }}>
               <input style={{ ...inputStyle, marginBottom: 0, flex: 1 }} placeholder="Nhập câu hỏi của bạn..." value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown} />
@@ -632,23 +700,6 @@ function App() {
           </div>
         ) : (
           <div style={{ width: "100%", maxWidth: 760, display: "flex", flexDirection: "column", gap: 20 }}>
-            <div style={{ ...card, border: "1px solid #F0D9BE", background: "#FFF9F0" }}>
-              <div style={sectionTitle}>🗄️ Sao lưu &amp; khôi phục dữ liệu</div>
-              <div style={{ fontSize: 12.5, color: "#6B6255", lineHeight: 1.6, marginBottom: 12 }}>
-                ⚠️ Dữ liệu (tài liệu, cài đặt) đang lưu trên ổ đĩa tạm của server — <strong>có thể bị mất mỗi khi bạn cập nhật/deploy lại code</strong> (đặc biệt trên gói Free của Render). Hãy bấm <strong>Tải file sao lưu</strong> sau mỗi lần chỉnh sửa tài liệu quan trọng, và <strong>Khôi phục</strong> lại ngay sau khi deploy nếu thấy dữ liệu bị trống.
-              </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button type="button" onClick={downloadBackup} style={{ ...primaryButtonStyle, width: "auto", flex: "1 1 200px", marginTop: 0 }}>💾 Tải file sao lưu</button>
-                <input ref={backupInputRef} type="file" accept=".json" onChange={restoreBackup} style={{ display: "none" }} />
-                <button type="button" onClick={() => backupInputRef.current && backupInputRef.current.click()} style={{ ...outlineButton, height: "auto", padding: "10px 16px", flex: "1 1 200px" }}>📤 Khôi phục từ file sao lưu</button>
-              </div>
-              {backupResult && (
-                <div style={{ marginTop: 10, fontSize: 12.5, fontWeight: 600, color: backupResult.ok ? "#3D7A4E" : "#B3261E" }}>
-                  {backupResult.ok ? "✅ " : "❌ "}{backupResult.message}
-                </div>
-              )}
-            </div>
-
             <div style={card}>
               <div style={sectionTitle}>💬 Câu chào mở đầu</div>
               <textarea style={{ ...inputStyle, minHeight: 90, resize: "vertical" }} value={settingsForm.greeting} onChange={(e) => setSettingsForm({ ...settingsForm, greeting: e.target.value })} />
@@ -702,31 +753,4 @@ function escalateBtn(escalated) {
 }
 
 const card = { background: "#FFFFFF", border: "1px solid #DDD7C9", borderRadius: 14, padding: 20 };
-const sectionTitle = { fontSize: 15, fontWeight: 700, marginBottom: 4 };
-const miniLabel = { fontSize: 10.5, fontWeight: 700, color: "#8A8272", textTransform: "uppercase", letterSpacing: "0.03em" };
-const pill = { display: "inline-block", fontSize: 11, color: "#B5652F", background: "#F6E9DE", borderRadius: 999, padding: "2px 8px", margin: "2px 0 8px" };
-const labelStyle = { display: "block", fontSize: 12, fontWeight: 600, color: "#6B6255", marginBottom: 5, marginTop: 12 };
-const inputStyle = { width: "100%", border: "1px solid #DDD7C9", borderRadius: 8, padding: "9px 11px", fontSize: 14, fontFamily: "inherit", marginBottom: 4, background: "#FCFBF8", outline: "none" };
-const primaryButtonStyle = { width: "100%", marginTop: 16, background: "#B5652F", color: "#FFFFFF", border: "none", borderRadius: 8, padding: 10, fontSize: 14, fontWeight: 700, cursor: "pointer" };
-const darkButton = { whiteSpace: "nowrap", background: "#12303F", color: "#FFFFFF", border: "none", borderRadius: 8, padding: "0 14px", height: 38, fontSize: 12.5, fontWeight: 700, cursor: "pointer" };
-const outlineButton = { whiteSpace: "nowrap", background: "#FFFFFF", color: "#12303F", border: "1px solid #DDD7C9", borderRadius: 8, padding: "0 14px", height: 38, fontSize: 12.5, fontWeight: 700, cursor: "pointer" };
-const bubbleUser = { maxWidth: "80%", background: "#12303F", color: "#F3F1EC", padding: "10px 14px", borderRadius: 14, borderBottomRightRadius: 4, fontSize: 14, lineHeight: 1.55, whiteSpace: "pre-wrap" };
-const bubbleAssistant = { maxWidth: "80%", background: "#F3F1EC", color: "#1E2A32", padding: "10px 14px", borderRadius: 14, borderBottomLeftRadius: 4, fontSize: 14, lineHeight: 1.55, whiteSpace: "pre-wrap" };
-
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
-</script>
-
-<script>
-  // Chuyển JSX/ES6 sang JS thuần bằng Babel, ép dùng "classic runtime"
-  // (React.createElement) để tránh Babel tự chèn "import" — thứ không
-  // chạy được trong thẻ <script> thường (không phải type="module").
-  var sourceCode = document.getElementById("app-source").textContent;
-  var compiled = Babel.transform(sourceCode, {
-    presets: [["react", { runtime: "classic" }]],
-  }).code;
-  var appScript = document.createElement("script");
-  appScript.textContent = compiled;
-  document.body.appendChild(appScript);
-</script>
-</body>
-</html>
+const sectionTitle = { fontSize: 15, fontWeight:
