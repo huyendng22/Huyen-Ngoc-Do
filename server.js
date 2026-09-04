@@ -227,7 +227,7 @@ ${kbText || "(Chưa có tài liệu nào được nạp.)"}
     const response = await axios.post(
       "https://api.anthropic.com/v1/messages",
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         max_tokens: 1000,
         system: systemPrompt,
         messages: history.map((m) => ({ role: m.role, content: m.text })),
@@ -252,8 +252,19 @@ ${kbText || "(Chưa có tài liệu nào được nạp.)"}
 
     res.json({ ok: true, text: cleanText, needsEscalation });
   } catch (err) {
-    console.error(err.response?.data || err.message);
-    res.status(500).json({ ok: false, error: "Lỗi khi gọi Claude API." });
+    const anthropicError = err.response?.data?.error;
+    console.error(anthropicError || err.message);
+    let detail = "";
+    if (anthropicError?.type === "authentication_error") {
+      detail = " (Sai hoặc thiếu ANTHROPIC_API_KEY — kiểm tra lại biến môi trường trên Render.)";
+    } else if (anthropicError?.type === "not_found_error") {
+      detail = " (Tên model không tồn tại — kiểm tra lại dòng model trong server.js.)";
+    } else if (anthropicError?.type === "rate_limit_error") {
+      detail = " (Đã vượt giới hạn tốc độ/hạn mức của API key — thử lại sau ít phút.)";
+    } else if (anthropicError?.message) {
+      detail = ` (${anthropicError.message})`;
+    }
+    res.status(500).json({ ok: false, error: `Lỗi khi gọi Claude API.${detail}` });
   }
 });
 
