@@ -49,6 +49,12 @@ function authHeaders(adminToken) {
   return h;
 }
 
+// Chuẩn hoá ký tự xuống dòng (Excel/Windows hay dùng \r\n) về \n thống nhất,
+// để hiển thị đúng định dạng xuống dòng đã gõ trong Excel / khi dán dữ liệu.
+function normalizeLineBreaks(str) {
+  return String(str || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+}
+
 function App() {
   function renderMessageContent(text) {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
@@ -76,6 +82,7 @@ function App() {
   const [filterCategory, setFilterCategory] = useState("ALL");
 
   const [form, setForm] = useState({ title: "", category: CATEGORIES[0].id, content: "", videoUrl: "", imageUrl: "" });
+  const [editingId, setEditingId] = useState(null);
   const [entryMode, setEntryMode] = useState("single");
   const [bulkText, setBulkText] = useState("");
   const [bulkCategory, setBulkCategory] = useState(CATEGORIES[0].id);
@@ -135,12 +142,41 @@ function App() {
 
   async function addEntry() {
     if (!form.title.trim() || !form.content.trim()) return;
+    if (editingId) {
+      const nextEntries = kbEntries.map((e) => (e.id === editingId ? { ...e, ...form } : e));
+      const ok = await saveKbEntries(nextEntries);
+      if (ok) {
+        setForm({ title: "", category: CATEGORIES[0].id, content: "", videoUrl: "", imageUrl: "" });
+        setEditingId(null);
+      }
+      return;
+    }
     const entry = { id: String(Date.now()), ...form };
     const ok = await saveKbEntries([entry, ...kbEntries]);
     if (ok) setForm({ title: "", category: CATEGORIES[0].id, content: "", videoUrl: "", imageUrl: "" });
   }
 
+  function startEdit(entry) {
+    setEntryMode("single");
+    setForm({
+      title: entry.title || "",
+      category: entry.category || CATEGORIES[0].id,
+      content: entry.content || "",
+      videoUrl: entry.videoUrl || "",
+      imageUrl: entry.imageUrl || "",
+    });
+    setEditingId(entry.id);
+    setUploadError("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setForm({ title: "", category: CATEGORIES[0].id, content: "", videoUrl: "", imageUrl: "" });
+  }
+
   async function removeEntry(id) {
+    if (editingId === id) cancelEdit();
     await saveKbEntries(kbEntries.filter((e) => e.id !== id));
   }
 
@@ -151,7 +187,7 @@ function App() {
     if (looksTabular) {
       rawLines.forEach((line) => {
         if (!line.trim()) return;
-        const cols = line.split("\t").map((c) => c.trim());
+        const cols = line.split("\t").map((c) => normalizeLineBreaks(c).trim());
         if (/^(câu hỏi|question)$/i.test(cols[0])) return;
         if (cols.length >= 3 && cols[0] && cols[2]) {
           entries.push({ title: cols[0], category: resolveCategoryId(cols[1], defaultCategoryId), content: cols[2], videoUrl: cols[3] || "", imageUrl: cols[4] || "" });
@@ -161,7 +197,7 @@ function App() {
       });
       return entries;
     }
-    const blocks = text.split(/\n\s*\n/);
+    const blocks = normalizeLineBreaks(text).split(/\n\s*\n/);
     blocks.forEach((block) => {
       const qMatch = block.match(/câu hỏi\s*:\s*([\s\S]*?)(?:\n(?:danh mục|câu trả lời|video|hình ảnh)\s*:|$)/i);
       const cMatch = block.match(/danh mục\s*:\s*([\s\S]*?)(?:\n(?:câu trả lời|video|hình ảnh)\s*:|$)/i);
@@ -209,11 +245,11 @@ function App() {
       const parsed = [];
       rows.forEach((row, idx) => {
         if (idx === 0) return;
-        const question = String(row[0] || "").trim();
-        const rawCategory = String(row[1] || "").trim();
-        const answer = String(row[2] || "").trim();
-        const videoUrl = String(row[3] || "").trim();
-        const imageUrl = String(row[4] || "").trim();
+        const question = normalizeLineBreaks(row[0]).trim();
+        const rawCategory = normalizeLineBreaks(row[1]).trim();
+        const answer = normalizeLineBreaks(row[2]).trim();
+        const videoUrl = normalizeLineBreaks(row[3]).trim();
+        const imageUrl = normalizeLineBreaks(row[4]).trim();
         if (!question || !answer) return;
         if (question === EXAMPLE_QUESTION) return;
         parsed.push({ title: question, category: resolveCategoryId(rawCategory, CATEGORIES[CATEGORIES.length - 1].id), content: answer, videoUrl, imageUrl });
@@ -368,7 +404,7 @@ function App() {
               <div style={{ display: "flex", gap: "8px", marginBottom: "16px", alignItems: "center" }}>
                 <div style={{ display: "flex", gap: "6px", background: "#F3F1EC", padding: "4px", borderRadius: "9px", flex: 1 }}>
                   <ModeButton active={entryMode === "single"} onClick={() => setEntryMode("single")} label="✏️ Thêm từng câu" />
-                  <ModeButton active={entryMode === "bulk"} onClick={() => setEntryMode("bulk")} label="📋 Nhập hàng loạt" />
+                  <ModeButton active={entryMode === "bulk"} onClick={() => { cancelEdit(); setEntryMode("bulk"); }} label="📋 Nhập hàng loạt" />
                 </div>
                 <button type="button" onClick={downloadTemplate} style={outlineButton}>📄 Tải file mẫu</button>
                 <input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={handleExcelFile} style={{ display: "none" }} />
@@ -383,7 +419,12 @@ function App() {
 
               {entryMode === "single" ? (
                 <>
-                  <div style={sectionTitle}>📄 Thêm câu hỏi &amp; câu trả lời</div>
+                  <div style={sectionTitle}>{editingId ? "✏️ Chỉnh sửa câu hỏi & câu trả lời" : "📄 Thêm câu hỏi & câu trả lời"}</div>
+                  {editingId && (
+                    <div style={{ fontSize: 12, color: "#B5652F", fontWeight: 600, marginBottom: 4 }}>
+                      Đang chỉnh sửa 1 mục đã có — bấm "Lưu chỉnh sửa" để cập nhật, hoặc "Huỷ" để thoát.
+                    </div>
+                  )}
                   <label style={labelStyle}>Câu hỏi</label>
                   <input style={inputStyle} placeholder="VD: Làm sao để tạo phiếu đánh giá KPI?" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
                   <label style={labelStyle}>Danh mục</label>
@@ -419,7 +460,16 @@ function App() {
                     </div>
                   )}
 
-                  <button onClick={addEntry} style={primaryButtonStyle}>➕ Thêm vào tài liệu</button>
+                  <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+                    <button onClick={addEntry} style={{ ...primaryButtonStyle, width: "auto", flex: 1, marginTop: 0 }}>
+                      {editingId ? "💾 Lưu chỉnh sửa" : "➕ Thêm vào tài liệu"}
+                    </button>
+                    {editingId && (
+                      <button type="button" onClick={cancelEdit} style={{ ...outlineButton, height: "auto", padding: "10px 16px", flex: "0 0 auto" }}>
+                        ✕ Huỷ
+                      </button>
+                    )}
+                  </div>
                 </>
               ) : (
                 <>
@@ -483,7 +533,7 @@ function App() {
                     <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{e.title}</div>
                     <div style={pill}>{getCategoryLabel(e.category)}</div>
                     <div style={miniLabel}>Câu trả lời</div>
-                    <div style={{ fontSize: 13, color: "#4A443B", lineHeight: 1.5 }}>{e.content}</div>
+                    <div style={{ fontSize: 13, color: "#4A443B", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{e.content}</div>
                     {e.videoUrl && (
                       <div style={{ marginTop: 8 }}>
                         <a href={e.videoUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, color: "#12303F", fontWeight: 700, textDecoration: "none" }}>
@@ -498,7 +548,10 @@ function App() {
                       </div>
                     )}
                   </div>
-                  <button onClick={() => removeEntry(e.id)} style={{ background: "transparent", border: "none", cursor: "pointer", color: "#B5652F", height: "fit-content", fontSize: 16 }}>🗑️</button>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <button onClick={() => startEdit(e)} title="Chỉnh sửa" style={{ background: "transparent", border: "none", cursor: "pointer", color: "#12303F", height: "fit-content", fontSize: 16 }}>✏️</button>
+                    <button onClick={() => removeEntry(e.id)} title="Xoá" style={{ background: "transparent", border: "none", cursor: "pointer", color: "#B5652F", height: "fit-content", fontSize: 16 }}>🗑️</button>
+                  </div>
                 </div>
               ))}
             </div>
