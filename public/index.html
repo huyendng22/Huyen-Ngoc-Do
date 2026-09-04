@@ -226,6 +226,35 @@ function App() {
     }
   }
 
+  function downloadTemplate() {
+    const headers = ["Câu hỏi", "Danh mục", "Câu trả lời", "Link Video"];
+    const exampleRow = [
+      EXAMPLE_QUESTION,
+      "HD",
+      "Vào trang đăng nhập > bấm 'Quên mật khẩu' > nhập email đã đăng ký > làm theo hướng dẫn trong email.",
+      "https://youtube.com/watch?v=vidu",
+    ];
+    const ws = XLSX.utils.aoa_to_sheet([headers, exampleRow]);
+    ws["!cols"] = [{ wch: 45 }, { wch: 14 }, { wch: 70 }, { wch: 38 }];
+
+    const wsNote = XLSX.utils.aoa_to_sheet([
+      ["Mã danh mục", "Tên danh mục"],
+      ...CATEGORIES.map((c) => [c.id, c.label]),
+      [],
+      ["Ghi chú:"],
+      ["- Giữ nguyên tên sheet \"Dữ liệu\" và thứ tự 4 cột: Câu hỏi, Danh mục, Câu trả lời, Link Video."],
+      ["- Cột Danh mục điền đúng 1 trong các mã ở bảng trên (VD: HD)."],
+      ["- Cột Link Video có thể để trống nếu không có video hướng dẫn."],
+      ["- Dòng ví dụ đầu tiên trong sheet \"Dữ liệu\" sẽ tự động bị bỏ qua khi nhập, không cần xoá thủ công."],
+    ]);
+    wsNote["!cols"] = [{ wch: 42 }, { wch: 30 }];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Dữ liệu");
+    XLSX.utils.book_append_sheet(wb, wsNote, "Hướng dẫn");
+    XLSX.writeFile(wb, "mau_nhap_du_lieu_chatbot.xlsx");
+  }
+
   async function handleImageUpload(event) {
     const file = event.target.files && event.target.files[0];
     if (!file) return;
@@ -341,6 +370,7 @@ function App() {
                   <ModeButton active={entryMode === "single"} onClick={() => setEntryMode("single")} label="✏️ Thêm từng câu" />
                   <ModeButton active={entryMode === "bulk"} onClick={() => setEntryMode("bulk")} label="📋 Nhập hàng loạt" />
                 </div>
+                <button type="button" onClick={downloadTemplate} style={outlineButton}>📄 Tải file mẫu</button>
                 <input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={handleExcelFile} style={{ display: "none" }} />
                 <button onClick={() => fileInputRef.current && fileInputRef.current.click()} style={darkButton}>⬆️ Nhập file Excel</button>
               </div>
@@ -557,6 +587,7 @@ const labelStyle = { display: "block", fontSize: 12, fontWeight: 600, color: "#6
 const inputStyle = { width: "100%", border: "1px solid #DDD7C9", borderRadius: 8, padding: "9px 11px", fontSize: 14, fontFamily: "inherit", marginBottom: 4, background: "#FCFBF8", outline: "none" };
 const primaryButtonStyle = { width: "100%", marginTop: 16, background: "#B5652F", color: "#FFFFFF", border: "none", borderRadius: 8, padding: 10, fontSize: 14, fontWeight: 700, cursor: "pointer" };
 const darkButton = { whiteSpace: "nowrap", background: "#12303F", color: "#FFFFFF", border: "none", borderRadius: 8, padding: "0 14px", height: 38, fontSize: 12.5, fontWeight: 700, cursor: "pointer" };
+const outlineButton = { whiteSpace: "nowrap", background: "#FFFFFF", color: "#12303F", border: "1px solid #DDD7C9", borderRadius: 8, padding: "0 14px", height: 38, fontSize: 12.5, fontWeight: 700, cursor: "pointer" };
 const bubbleUser = { maxWidth: "80%", background: "#12303F", color: "#F3F1EC", padding: "10px 14px", borderRadius: 14, borderBottomRightRadius: 4, fontSize: 14, lineHeight: 1.55, whiteSpace: "pre-wrap" };
 const bubbleAssistant = { maxWidth: "80%", background: "#F3F1EC", color: "#1E2A32", padding: "10px 14px", borderRadius: 14, borderBottomLeftRadius: 4, fontSize: 14, lineHeight: 1.55, whiteSpace: "pre-wrap" };
 
