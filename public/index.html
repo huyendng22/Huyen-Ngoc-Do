@@ -95,6 +95,9 @@ function App() {
   const [adminToken, setAdminToken] = useState(localStorage.getItem("adminToken") || "");
   const [adminError, setAdminError] = useState("");
 
+  const backupInputRef = useRef(null);
+  const [backupResult, setBackupResult] = useState(null);
+
   const [settings, setSettings] = useState({ greeting: DEFAULT_GREETING, expertEmail: "" });
   const [settingsForm, setSettingsForm] = useState({ greeting: DEFAULT_GREETING, expertEmail: "" });
   const [settingsSaved, setSettingsSaved] = useState(false);
@@ -333,6 +336,55 @@ function App() {
   function saveAdminToken(value) {
     setAdminToken(value);
     localStorage.setItem("adminToken", value);
+  }
+
+  // ============ SAO LƯU / KHÔI PHỤC (đề phòng mất dữ liệu khi Render khởi động lại container) ============
+  function downloadBackup() {
+    const payload = {
+      backupType: "chatbot-ho-tro-website",
+      exportedAt: new Date().toISOString(),
+      kb: { entries: kbEntries },
+      settings,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
+    a.href = url;
+    a.download = `sao-luu-du-lieu-chatbot-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  async function restoreBackup(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    setBackupResult(null);
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const entries = parsed?.kb?.entries;
+      if (!Array.isArray(entries)) throw new Error("File sao lưu không đúng định dạng (thiếu kb.entries).");
+
+      const okKb = await saveKbEntries(entries);
+      if (!okKb) { setBackupResult({ ok: false, message: "Sai mã quản trị — không khôi phục được." }); return; }
+
+      if (parsed?.settings) {
+        const r = await fetch("/api/settings", { method: "PUT", headers: authHeaders(adminToken), body: JSON.stringify(parsed.settings) });
+        if (r.ok) {
+          const data = await r.json();
+          setSettings(data.settings);
+          setSettingsForm(data.settings);
+        }
+      }
+      setBackupResult({ ok: true, message: `Đã khôi phục ${entries.length} mục tài liệu${parsed?.settings ? " + cài đặt" : ""} từ file sao lưu.` });
+    } catch (err) {
+      setBackupResult({ ok: false, message: err.message || "Không đọc được file sao lưu." });
+    } finally {
+      event.target.value = "";
+    }
   }
 
   async function escalateQuestion(index) {
@@ -580,6 +632,23 @@ function App() {
           </div>
         ) : (
           <div style={{ width: "100%", maxWidth: 760, display: "flex", flexDirection: "column", gap: 20 }}>
+            <div style={{ ...card, border: "1px solid #F0D9BE", background: "#FFF9F0" }}>
+              <div style={sectionTitle}>🗄️ Sao lưu &amp; khôi phục dữ liệu</div>
+              <div style={{ fontSize: 12.5, color: "#6B6255", lineHeight: 1.6, marginBottom: 12 }}>
+                ⚠️ Dữ liệu (tài liệu, cài đặt) đang lưu trên ổ đĩa tạm của server — <strong>có thể bị mất mỗi khi bạn cập nhật/deploy lại code</strong> (đặc biệt trên gói Free của Render). Hãy bấm <strong>Tải file sao lưu</strong> sau mỗi lần chỉnh sửa tài liệu quan trọng, và <strong>Khôi phục</strong> lại ngay sau khi deploy nếu thấy dữ liệu bị trống.
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button type="button" onClick={downloadBackup} style={{ ...primaryButtonStyle, width: "auto", flex: "1 1 200px", marginTop: 0 }}>💾 Tải file sao lưu</button>
+                <input ref={backupInputRef} type="file" accept=".json" onChange={restoreBackup} style={{ display: "none" }} />
+                <button type="button" onClick={() => backupInputRef.current && backupInputRef.current.click()} style={{ ...outlineButton, height: "auto", padding: "10px 16px", flex: "1 1 200px" }}>📤 Khôi phục từ file sao lưu</button>
+              </div>
+              {backupResult && (
+                <div style={{ marginTop: 10, fontSize: 12.5, fontWeight: 600, color: backupResult.ok ? "#3D7A4E" : "#B3261E" }}>
+                  {backupResult.ok ? "✅ " : "❌ "}{backupResult.message}
+                </div>
+              )}
+            </div>
+
             <div style={card}>
               <div style={sectionTitle}>💬 Câu chào mở đầu</div>
               <textarea style={{ ...inputStyle, minHeight: 90, resize: "vertical" }} value={settingsForm.greeting} onChange={(e) => setSettingsForm({ ...settingsForm, greeting: e.target.value })} />
