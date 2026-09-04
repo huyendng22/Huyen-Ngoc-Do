@@ -19,6 +19,7 @@ const axios = require("axios");
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
+const multer = require("multer");
 require("dotenv").config();
 
 const app = express();
@@ -35,6 +36,25 @@ const ZALO_CALLBACK_URL = process.env.ZALO_CALLBACK_URL;
 
 const DATA_DIR = path.join(__dirname, "data");
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
+
+const UPLOADS_DIR = path.join(DATA_DIR, "uploads");
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR);
+app.use("/uploads", express.static(UPLOADS_DIR));
+
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, UPLOADS_DIR),
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname || "").slice(0, 10);
+      cb(null, `${Date.now()}-${crypto.randomBytes(4).toString("hex")}${ext}`);
+    },
+  }),
+  limits: { fileSize: 5 * 1024 * 1024 }, // tối đa 5MB mỗi ảnh
+  fileFilter: (req, file, cb) => {
+    if (!/^image\//.test(file.mimetype)) return cb(new Error("Chỉ chấp nhận file ảnh (jpg, png, gif, webp...)."));
+    cb(null, true);
+  },
+});
 
 const KB_FILE = path.join(DATA_DIR, "kb.json");
 const SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
@@ -96,6 +116,18 @@ function requireAdmin(req, res, next) {
 }
 
 // ================= CƠ SỞ TRI THỨC (dùng chung) =================
+// ================= TẢI ẢNH MINH HOẠ LÊN SERVER =================
+app.post("/api/upload-image", requireAdmin, (req, res) => {
+  upload.single("image")(req, res, (err) => {
+    if (err) {
+      const msg = err.code === "LIMIT_FILE_SIZE" ? "Ảnh vượt quá 5MB." : err.message || "Lỗi khi tải ảnh lên.";
+      return res.status(400).json({ ok: false, error: msg });
+    }
+    if (!req.file) return res.status(400).json({ ok: false, error: "Không nhận được file." });
+    res.json({ ok: true, url: `/uploads/${req.file.filename}` });
+  });
+});
+
 app.get("/api/kb", (req, res) => {
   res.json(kb);
 });
@@ -120,6 +152,8 @@ app.post("/api/kb/import", requireAdmin, (req, res) => {
     title: String(e.title || "").trim(),
     category: e.category || "KHAC",
     content: String(e.content || "").trim(),
+    videoUrl: String(e.videoUrl || "").trim(),
+    imageUrl: String(e.imageUrl || "").trim(),
   }));
   kb = { entries: [...withIds, ...kb.entries] };
   writeJson(KB_FILE, kb);
@@ -162,14 +196,21 @@ app.post("/api/chat", async (req, res) => {
     return res.status(500).json({ ok: false, error: "Server chưa cấu hình ANTHROPIC_API_KEY." });
   }
 
+  const origin = `${req.protocol}://${req.get("host")}`;
+  const toAbsolute = (url) => (url && url.startsWith("/") ? `${origin}${url}` : url);
+
   const kbText = kb.entries
-    .map(
-      (e, i) =>
-        `[Mục ${i + 1}] Câu hỏi: ${e.title}\nDanh mục: ${getCategoryLabel(e.category)}\nCâu trả lời: ${e.content}`
-    )
+    .map((e, i) => {
+      let block = `[Mục ${i + 1}] Câu hỏi: ${e.title}\nDanh mục: ${getCategoryLabel(e.category)}\nCâu trả lời: ${e.content}`;
+      if (e.videoUrl) block += `\nVideo hướng dẫn: ${toAbsolute(e.videoUrl)}`;
+      if (e.imageUrl) block += `\nHình ảnh minh hoạ: ${toAbsolute(e.imageUrl)}`;
+      return block;
+    })
     .join("\n\n");
 
   const systemPrompt = `Bạn là trợ lý hỗ trợ người dùng phần mềm. Chỉ trả lời dựa trên tài liệu hướng dẫn dưới đây, tuyệt đối không bịa thông tin.
+
+Nếu mục tài liệu bạn dùng để trả lời có kèm "Video hướng dẫn" hoặc "Hình ảnh minh hoạ", hãy thêm nguyên văn (dòng chữ và link URL đó) vào cuối câu trả lời để người dùng xem thêm. Không tự thêm link nếu mục đó không có.
 
 Trả lời ngắn gọn, rõ ràng, theo từng bước nếu là hướng dẫn thao tác. Trả lời bằng tiếng Việt.
 
