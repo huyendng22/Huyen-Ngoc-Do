@@ -121,6 +121,9 @@ function App() {
 
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState({ ...EMPTY_FORM });
+  const editImageInputRef = useRef(null);
+  const editImageInputRef2 = useRef(null);
   const [entryMode, setEntryMode] = useState("single");
   const [bulkText, setBulkText] = useState("");
   const [bulkCategory, setBulkCategory] = useState(CATEGORIES[0].id);
@@ -188,23 +191,13 @@ function App() {
 
   async function addEntry() {
     if (!form.title.trim() || !form.content.trim()) return;
-    if (editingId) {
-      const nextEntries = kbEntries.map((e) => (e.id === editingId ? { ...e, ...form } : e));
-      const ok = await saveKbEntries(nextEntries);
-      if (ok) {
-        setForm({ ...EMPTY_FORM });
-        setEditingId(null);
-      }
-      return;
-    }
     const entry = { id: String(Date.now()), ...form };
     const ok = await saveKbEntries([entry, ...kbEntries]);
     if (ok) setForm({ ...EMPTY_FORM });
   }
 
   function startEdit(entry) {
-    setEntryMode("single");
-    setForm({
+    setEditForm({
       title: entry.title || "",
       category: entry.category || CATEGORIES[0].id,
       content: entry.content || "",
@@ -214,12 +207,19 @@ function App() {
     });
     setEditingId(entry.id);
     setUploadError("");
-    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function cancelEdit() {
     setEditingId(null);
-    setForm({ ...EMPTY_FORM });
+    setEditForm({ ...EMPTY_FORM });
+    setUploadError("");
+  }
+
+  async function saveEditEntry() {
+    if (!editForm.title.trim() || !editForm.content.trim() || !editingId) return;
+    const nextEntries = kbEntries.map((e) => (e.id === editingId ? { ...e, ...editForm } : e));
+    const ok = await saveKbEntries(nextEntries);
+    if (ok) cancelEdit();
   }
 
   async function removeEntry(id) {
@@ -343,8 +343,9 @@ function App() {
     XLSX.writeFile(wb, "mau_nhap_du_lieu_chatbot.xlsx");
   }
 
-  async function handleImageUpload(event, field) {
+  async function handleImageUpload(event, field, setTarget) {
     const targetField = field || "imageUrl";
+    const targetSetter = setTarget || setForm;
     const file = event.target.files && event.target.files[0];
     if (!file) return;
     setUploadError("");
@@ -363,7 +364,7 @@ function App() {
       } else if (!r.ok || !data.ok) {
         setUploadError(data.error || "Tải ảnh lên thất bại.");
       } else {
-        setForm((prev) => ({ ...prev, [targetField]: data.url }));
+        targetSetter((prev) => ({ ...prev, [targetField]: data.url }));
       }
     } catch (e) {
       setUploadError("Lỗi kết nối khi tải ảnh lên.");
@@ -632,12 +633,7 @@ function App() {
 
               {entryMode === "single" ? (
                 <>
-                  <div style={sectionTitle}>{editingId ? "✏️ Chỉnh sửa câu hỏi & câu trả lời" : "📄 Thêm câu hỏi & câu trả lời"}</div>
-                  {editingId && (
-                    <div style={{ fontSize: 12, color: "#B5652F", fontWeight: 600, marginBottom: 4 }}>
-                      Đang chỉnh sửa 1 mục đã có — bấm "Lưu chỉnh sửa" để cập nhật, hoặc "Huỷ" để thoát.
-                    </div>
-                  )}
+                  <div style={sectionTitle}>📄 Thêm câu hỏi &amp; câu trả lời</div>
                   <label style={labelStyle}>Câu hỏi</label>
                   <input style={inputStyle} placeholder="VD: Làm sao để tạo phiếu đánh giá KPI?" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
                   <label style={labelStyle}>Danh mục</label>
@@ -699,13 +695,8 @@ function App() {
 
                   <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
                     <button onClick={addEntry} style={{ ...primaryButtonStyle, width: "auto", flex: 1, marginTop: 0 }}>
-                      {editingId ? "💾 Lưu chỉnh sửa" : "➕ Thêm vào tài liệu"}
+                      ➕ Thêm vào tài liệu
                     </button>
-                    {editingId && (
-                      <button type="button" onClick={cancelEdit} style={{ ...outlineButton, height: "auto", padding: "10px 16px", flex: "0 0 auto" }}>
-                        ✕ Huỷ
-                      </button>
-                    )}
                   </div>
                 </>
               ) : (
@@ -764,38 +755,99 @@ function App() {
               )}
 
               {filteredEntries.map((e) => (
-                <div key={e.id} style={{ ...card, padding: "14px 16px", display: "flex", justifyContent: "space-between", gap: 12 }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={miniLabel}>Câu hỏi</div>
-                    <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{e.title}</div>
-                    <div style={pill}>{getCategoryLabel(e.category)}</div>
-                    <div style={miniLabel}>Câu trả lời</div>
-                    <div style={{ fontSize: 13, color: "#4A443B", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{e.content}</div>
-                    {e.videoUrl && (
-                      <div style={{ marginTop: 8 }}>
-                        <a href={e.videoUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, color: "#12303F", fontWeight: 700, textDecoration: "none" }}>
-                          🎥 Video hướng dẫn ↗
-                        </a>
+                <div key={e.id} style={{ ...card, padding: "14px 16px" }}>
+                  {editingId === e.id ? (
+                    <div>
+                      <div style={{ fontSize: 12, color: "#B5652F", fontWeight: 700, marginBottom: 8 }}>✏️ Đang chỉnh sửa</div>
+                      <label style={labelStyle}>Câu hỏi</label>
+                      <input style={inputStyle} placeholder="VD: Làm sao để tạo phiếu đánh giá KPI?" value={editForm.title} onChange={(ev) => setEditForm({ ...editForm, title: ev.target.value })} />
+                      <label style={labelStyle}>Danh mục</label>
+                      <select style={inputStyle} value={editForm.category} onChange={(ev) => setEditForm({ ...editForm, category: ev.target.value })}>
+                        {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label} ({c.id})</option>)}
+                      </select>
+                      <label style={labelStyle}>Câu trả lời</label>
+                      <textarea style={{ ...inputStyle, minHeight: 100, resize: "vertical" }} placeholder="Nhập câu trả lời chi tiết..." value={editForm.content} onChange={(ev) => setEditForm({ ...editForm, content: ev.target.value })} />
+
+                      <label style={labelStyle}>🎥 Link video hướng dẫn (tuỳ chọn)</label>
+                      <input style={inputStyle} placeholder="vd: https://youtube.com/watch?v=..." value={editForm.videoUrl} onChange={(ev) => setEditForm({ ...editForm, videoUrl: ev.target.value })} />
+
+                      <label style={labelStyle}>🖼️ Hình ảnh minh hoạ (tối đa 2 ảnh, tuỳ chọn)</label>
+
+                      <div style={{ fontSize: 11.5, color: "#8A8272", marginBottom: 4 }}>Ảnh 1</div>
+                      <div style={{ display: "flex", gap: 8, marginBottom: 4 }}>
+                        <input style={{ ...inputStyle, marginBottom: 0, flex: 1 }} placeholder="Dán link ảnh, hoặc bấm nút bên phải để tải ảnh từ máy" value={editForm.imageUrl} onChange={(ev) => setEditForm({ ...editForm, imageUrl: ev.target.value })} />
+                        <input ref={editImageInputRef} type="file" accept="image/*" onChange={(ev) => handleImageUpload(ev, "imageUrl", setEditForm)} style={{ display: "none" }} />
+                        <button type="button" onClick={() => editImageInputRef.current && editImageInputRef.current.click()} disabled={uploadingImage} style={{ ...darkButton, flex: "0 0 auto" }}>
+                          {uploadingImage ? "⏳ Đang tải..." : "⬆️ Tải ảnh lên"}
+                        </button>
                       </div>
-                    )}
-                    {(e.imageUrl || e.imageUrl2) && (
-                      <div style={{ marginTop: 8 }}>
-                        <div style={miniLabel}>🖼️ Hình ảnh minh hoạ</div>
-                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
-                          {e.imageUrl && (
-                            <img src={e.imageUrl} alt={e.title} onClick={() => setLightboxSrc(e.imageUrl)} style={{ maxWidth: 220, maxHeight: 140, borderRadius: 8, border: "1px solid #DDD7C9", cursor: "zoom-in" }} onError={(ev) => { ev.target.style.display = "none"; }} />
-                          )}
-                          {e.imageUrl2 && (
-                            <img src={e.imageUrl2} alt={e.title} onClick={() => setLightboxSrc(e.imageUrl2)} style={{ maxWidth: 220, maxHeight: 140, borderRadius: 8, border: "1px solid #DDD7C9", cursor: "zoom-in" }} onError={(ev) => { ev.target.style.display = "none"; }} />
-                          )}
+                      {editForm.imageUrl && (
+                        <div style={{ position: "relative", display: "inline-block", marginTop: 2, marginBottom: 10 }}>
+                          <img src={editForm.imageUrl} alt="Xem trước ảnh 1" onClick={() => setLightboxSrc(editForm.imageUrl)} style={{ maxWidth: "100%", maxHeight: 160, borderRadius: 8, border: "1px solid #DDD7C9", display: "block", cursor: "zoom-in" }} onError={(ev) => { ev.target.style.display = "none"; }} />
+                          <button type="button" onClick={() => setEditForm({ ...editForm, imageUrl: "" })} style={{ position: "absolute", top: 4, right: 4, background: "rgba(18,48,63,0.8)", color: "#fff", border: "none", borderRadius: 6, padding: "2px 8px", fontSize: 11, cursor: "pointer" }}>
+                            ✕ Xoá
+                          </button>
                         </div>
+                      )}
+
+                      <div style={{ fontSize: 11.5, color: "#8A8272", marginBottom: 4 }}>Ảnh 2</div>
+                      <div style={{ display: "flex", gap: 8, marginBottom: 4 }}>
+                        <input style={{ ...inputStyle, marginBottom: 0, flex: 1 }} placeholder="Dán link ảnh, hoặc bấm nút bên phải để tải ảnh từ máy" value={editForm.imageUrl2} onChange={(ev) => setEditForm({ ...editForm, imageUrl2: ev.target.value })} />
+                        <input ref={editImageInputRef2} type="file" accept="image/*" onChange={(ev) => handleImageUpload(ev, "imageUrl2", setEditForm)} style={{ display: "none" }} />
+                        <button type="button" onClick={() => editImageInputRef2.current && editImageInputRef2.current.click()} disabled={uploadingImage} style={{ ...darkButton, flex: "0 0 auto" }}>
+                          {uploadingImage ? "⏳ Đang tải..." : "⬆️ Tải ảnh lên"}
+                        </button>
                       </div>
-                    )}
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    <button onClick={() => startEdit(e)} title="Chỉnh sửa" style={{ background: "transparent", border: "none", cursor: "pointer", color: "#12303F", height: "fit-content", fontSize: 16 }}>✏️</button>
-                    <button onClick={() => removeEntry(e.id)} title="Xoá" style={{ background: "transparent", border: "none", cursor: "pointer", color: "#B5652F", height: "fit-content", fontSize: 16 }}>🗑️</button>
-                  </div>
+                      {uploadError && <div style={{ fontSize: 12, color: "#B3261E", marginBottom: 6 }}>{uploadError}</div>}
+                      {editForm.imageUrl2 && (
+                        <div style={{ position: "relative", display: "inline-block", marginTop: 2 }}>
+                          <img src={editForm.imageUrl2} alt="Xem trước ảnh 2" onClick={() => setLightboxSrc(editForm.imageUrl2)} style={{ maxWidth: "100%", maxHeight: 160, borderRadius: 8, border: "1px solid #DDD7C9", display: "block", cursor: "zoom-in" }} onError={(ev) => { ev.target.style.display = "none"; }} />
+                          <button type="button" onClick={() => setEditForm({ ...editForm, imageUrl2: "" })} style={{ position: "absolute", top: 4, right: 4, background: "rgba(18,48,63,0.8)", color: "#fff", border: "none", borderRadius: 6, padding: "2px 8px", fontSize: 11, cursor: "pointer" }}>
+                            ✕ Xoá
+                          </button>
+                        </div>
+                      )}
+
+                      <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+                        <button onClick={saveEditEntry} style={{ ...primaryButtonStyle, width: "auto", flex: 1, marginTop: 0 }}>💾 Lưu chỉnh sửa</button>
+                        <button type="button" onClick={cancelEdit} style={{ ...outlineButton, height: "auto", padding: "10px 16px", flex: "0 0 auto" }}>✕ Huỷ</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={miniLabel}>Câu hỏi</div>
+                        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{e.title}</div>
+                        <div style={pill}>{getCategoryLabel(e.category)}</div>
+                        <div style={miniLabel}>Câu trả lời</div>
+                        <div style={{ fontSize: 13, color: "#4A443B", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{e.content}</div>
+                        {e.videoUrl && (
+                          <div style={{ marginTop: 8 }}>
+                            <a href={e.videoUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, color: "#12303F", fontWeight: 700, textDecoration: "none" }}>
+                              🎥 Video hướng dẫn ↗
+                            </a>
+                          </div>
+                        )}
+                        {(e.imageUrl || e.imageUrl2) && (
+                          <div style={{ marginTop: 8 }}>
+                            <div style={miniLabel}>🖼️ Hình ảnh minh hoạ</div>
+                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
+                              {e.imageUrl && (
+                                <img src={e.imageUrl} alt={e.title} onClick={() => setLightboxSrc(e.imageUrl)} style={{ maxWidth: 220, maxHeight: 140, borderRadius: 8, border: "1px solid #DDD7C9", cursor: "zoom-in" }} onError={(ev) => { ev.target.style.display = "none"; }} />
+                              )}
+                              {e.imageUrl2 && (
+                                <img src={e.imageUrl2} alt={e.title} onClick={() => setLightboxSrc(e.imageUrl2)} style={{ maxWidth: 220, maxHeight: 140, borderRadius: 8, border: "1px solid #DDD7C9", cursor: "zoom-in" }} onError={(ev) => { ev.target.style.display = "none"; }} />
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <button onClick={() => startEdit(e)} title="Chỉnh sửa" style={{ background: "transparent", border: "none", cursor: "pointer", color: "#12303F", height: "fit-content", fontSize: 16 }}>✏️</button>
+                        <button onClick={() => removeEntry(e.id)} title="Xoá" style={{ background: "transparent", border: "none", cursor: "pointer", color: "#B5652F", height: "fit-content", fontSize: 16 }}>🗑️</button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
