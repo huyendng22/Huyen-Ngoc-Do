@@ -694,8 +694,8 @@ function App() {
                   )}
 
                   <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-                    <button onClick={addEntry} style={{ ...primaryButtonStyle, width: "auto", flex: 1, marginTop: 0 }}>
-                      ➕ Thêm vào tài liệu
+                    <button onClick={addEntry} disabled={uploadingImage} style={{ ...primaryButtonStyle, width: "auto", flex: 1, marginTop: 0, opacity: uploadingImage ? 0.6 : 1 }}>
+                      {uploadingImage ? "⏳ Đang tải ảnh lên, vui lòng đợi..." : "➕ Thêm vào tài liệu"}
                     </button>
                   </div>
                 </>
@@ -809,7 +809,9 @@ function App() {
                       )}
 
                       <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-                        <button onClick={saveEditEntry} style={{ ...primaryButtonStyle, width: "auto", flex: 1, marginTop: 0 }}>💾 Lưu chỉnh sửa</button>
+                        <button onClick={saveEditEntry} disabled={uploadingImage} style={{ ...primaryButtonStyle, width: "auto", flex: 1, marginTop: 0, opacity: uploadingImage ? 0.6 : 1 }}>
+                          {uploadingImage ? "⏳ Đang tải ảnh lên, vui lòng đợi..." : "💾 Lưu chỉnh sửa"}
+                        </button>
                         <button type="button" onClick={cancelEdit} style={{ ...outlineButton, height: "auto", padding: "10px 16px", flex: "0 0 auto" }}>✕ Huỷ</button>
                       </div>
                     </div>
