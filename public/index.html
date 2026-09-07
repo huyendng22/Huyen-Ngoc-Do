@@ -560,23 +560,22 @@ function App() {
 
   function matchKb(query) {
     const queryTokens = tokenizeVN(query);
-    if (!kbEntries || kbEntries.length === 0 || queryTokens.length === 0) return null;
+    if (!kbEntries || kbEntries.length === 0 || queryTokens.length === 0) return { type: "none" };
     const queryBigrams = bigramsOfTokens(queryTokens);
-    let best = null;
-    let second = null;
-    kbIndex.indexed.forEach((idxEntry) => {
-      const s = scoreKbEntryTfidf(queryTokens, queryBigrams, idxEntry, kbIndex.df, kbIndex.N);
-      if (!best || s > best.score) {
-        second = best;
-        best = { entry: idxEntry.entry, score: s };
-      } else if (!second || s > second.score) {
-        second = { entry: idxEntry.entry, score: s };
-      }
-    });
-    if (!best || best.score < KB_MATCH_THRESHOLD) return null;
-    // Top-1 và top-2 quá sát nhau -> máy đang phân vân giữa 2 mục dễ nhầm -> không tự tin trả lời.
-    if (second && (best.score - second.score) < KB_MATCH_MIN_MARGIN) return null;
-    return best.entry;
+    const scored = kbIndex.indexed
+      .map((idxEntry) => ({ entry: idxEntry.entry, score: scoreKbEntryTfidf(queryTokens, queryBigrams, idxEntry, kbIndex.df, kbIndex.N) }))
+      .sort((a, b) => b.score - a.score);
+
+    const best = scored[0];
+    if (!best || best.score < KB_MATCH_THRESHOLD) return { type: "none" };
+
+    // Gom mọi mục có điểm sát với mục cao nhất (trong phạm vi margin) -> coi là "đồng hạng",
+    // máy đang phân vân giữa các mục này. Thay vì đoán liều 1 mục, cho người dùng tự chọn.
+    const topTier = scored.filter((s) => best.score - s.score < KB_MATCH_MIN_MARGIN);
+    if (topTier.length > 1) {
+      return { type: "ambiguous", candidates: topTier.slice(0, 4).map((s) => s.entry) };
+    }
+    return { type: "confident", entry: best.entry };
   }
 
   function sendMessage() {
@@ -585,8 +584,10 @@ function App() {
     setMessages((prev) => [...prev, { role: "user", text: question }]);
     setInput("");
 
-    const matched = matchKb(question);
-    if (matched) {
+    const result = matchKb(question);
+
+    if (result.type === "confident") {
+      const matched = result.entry;
       setMessages((prev) => [
         ...prev,
         {
@@ -603,10 +604,37 @@ function App() {
       return;
     }
 
+    if (result.type === "ambiguous") {
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", source: "ambiguous", text: "🤔 Mình tìm thấy vài mục có thể phù hợp, ý bạn là mục nào?", candidates: result.candidates, question },
+      ]);
+      return;
+    }
+
     setMessages((prev) => [
       ...prev,
       { role: "assistant", source: "nomatch", text: "🔍 Không tìm thấy nội dung phù hợp trong tài liệu đã nạp.", question },
     ]);
+  }
+
+  function selectAmbiguousCandidate(index, entry) {
+    setMessages((prev) =>
+      prev.map((m, i) =>
+        i === index
+          ? {
+              role: "assistant",
+              source: "kb",
+              text: entry.content,
+              matchedTitle: entry.title,
+              videoUrl: entry.videoUrl || "",
+              imageUrl: entry.imageUrl || "",
+              imageUrl2: entry.imageUrl2 || "",
+              question: m.question,
+            }
+          : m
+      )
+    );
   }
 
   async function askAI(index) {
@@ -617,7 +645,7 @@ function App() {
     try {
       const priorMessages = messages
         .slice(0, index)
-        .filter((m) => !(m.role === "assistant" && (m.source === "nomatch" || m.source === "error")));
+        .filter((m) => !(m.role === "assistant" && (m.source === "nomatch" || m.source === "error" || m.source === "ambiguous")));
       const history = [...priorMessages.map((m) => ({ role: m.role, text: m.text })), { role: "user", text: msg.question }];
       const r = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ history }) });
       const data = await r.json();
@@ -922,6 +950,9 @@ function App() {
                   {m.role === "assistant" && m.source === "ai" && (
                     <div style={{ fontSize: 10.5, fontWeight: 700, color: "#B5652F", textTransform: "uppercase", letterSpacing: "0.03em" }}>🤖 Claude AI</div>
                   )}
+                  {m.role === "assistant" && m.source === "ambiguous" && (
+                    <div style={{ fontSize: 10.5, fontWeight: 700, color: "#8A6D00", textTransform: "uppercase", letterSpacing: "0.03em" }}>🔍 Có vài mục gần giống nhau</div>
+                  )}
                   <div style={m.role === "user" ? bubbleUser : bubbleAssistant}>
                     {m.role === "assistant" ? renderMessageContent(m.text) : m.text}
                     {m.role === "assistant" && m.source === "kb" && m.videoUrl && (
@@ -937,10 +968,24 @@ function App() {
                     )}
                   </div>
 
-                  {m.role === "assistant" && (m.source === "nomatch" || m.source === "error") && (
+                  {m.role === "assistant" && m.source === "ambiguous" && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6, width: "100%", maxWidth: 480 }}>
+                      {m.candidates.map((c, ci) => (
+                        <button
+                          key={ci}
+                          onClick={() => selectAmbiguousCandidate(i, c)}
+                          style={{ textAlign: "left", background: "#FFFFFF", border: "1px solid #DDD7C9", borderRadius: 8, padding: "8px 12px", fontSize: 13, cursor: "pointer", color: "#12303F", lineHeight: 1.4 }}
+                        >
+                          {c.title}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {m.role === "assistant" && (m.source === "nomatch" || m.source === "error" || m.source === "ambiguous") && (
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       <button onClick={() => askAI(i)} disabled={m.asking} style={escalateBtn(false)}>
-                        {m.asking ? "⏳ Đang hỏi AI..." : "🤖 Hỏi AI (Claude)"}
+                        {m.asking ? "⏳ Đang hỏi AI..." : m.source === "ambiguous" ? "🤖 Không đúng ý, hỏi AI (Claude)" : "🤖 Hỏi AI (Claude)"}
                       </button>
                       <button onClick={() => escalateQuestion(i)} disabled={m.escalated || m.escalating} style={escalateBtn(m.escalated)}>
                         {m.escalating ? "⏳ Đang gửi..." : m.escalated ? "✅ Đã gửi cho chuyên gia" : "✉️ Gửi câu hỏi cho chuyên gia"}
