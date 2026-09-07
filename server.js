@@ -154,6 +154,7 @@ app.post("/api/kb/import", requireAdmin, (req, res) => {
     content: String(e.content || "").trim(),
     videoUrl: String(e.videoUrl || "").trim(),
     imageUrl: String(e.imageUrl || "").trim(),
+    imageUrl2: String(e.imageUrl2 || "").trim(),
   }));
   kb = { entries: [...withIds, ...kb.entries] };
   writeJson(KB_FILE, kb);
@@ -203,7 +204,8 @@ app.post("/api/chat", async (req, res) => {
     .map((e, i) => {
       let block = `[Mục ${i + 1}] Câu hỏi: ${e.title}\nDanh mục: ${getCategoryLabel(e.category)}\nCâu trả lời: ${e.content}`;
       if (e.videoUrl) block += `\nVideo hướng dẫn: ${toAbsolute(e.videoUrl)}`;
-      if (e.imageUrl) block += `\nHình ảnh minh hoạ: ${toAbsolute(e.imageUrl)}`;
+      if (e.imageUrl) block += `\nHình ảnh minh hoạ 1: ${toAbsolute(e.imageUrl)}`;
+      if (e.imageUrl2) block += `\nHình ảnh minh hoạ 2: ${toAbsolute(e.imageUrl2)}`;
       return block;
     })
     .join("\n\n");
