@@ -136,6 +136,8 @@ function App() {
 
   const backupInputRef = useRef(null);
   const [backupResult, setBackupResult] = useState(null);
+  const [backingUp, setBackingUp] = useState(false);
+  const [restoringBackup, setRestoringBackup] = useState(false);
 
   const [lightboxSrc, setLightboxSrc] = useState(null);
 
@@ -387,29 +389,69 @@ function App() {
   }
 
   // ============ SAO LƯU / KHÔI PHỤC (đề phòng mất dữ liệu khi Render khởi động lại container) ============
-  function downloadBackup() {
-    const payload = {
-      backupType: "chatbot-ho-tro-website",
-      exportedAt: new Date().toISOString(),
-      kb: { entries: kbEntries },
-      settings,
-    };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
-    a.href = url;
-    a.download = `sao-luu-du-lieu-chatbot-${stamp}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  function blobToDataUrl(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  async function downloadBackup() {
+    setBackingUp(true);
+    setBackupResult(null);
+    try {
+      // Thu thập ảnh đã tải lên qua nút "Tải ảnh lên" (đường dẫn dạng /uploads/...) để nhúng thẳng
+      // vào file sao lưu — ảnh dán link ngoài (http/https từ nơi khác) không cần nhúng vì vẫn còn nguyên ở nơi đó.
+      const localImagePaths = new Set();
+      kbEntries.forEach((e) => {
+        [e.imageUrl, e.imageUrl2].forEach((u) => {
+          if (u && u.startsWith("/uploads/")) localImagePaths.add(u);
+        });
+      });
+
+      const uploadedImages = {};
+      for (const p of localImagePaths) {
+        try {
+          const r = await fetch(p);
+          if (r.ok) uploadedImages[p] = await blobToDataUrl(await r.blob());
+        } catch (e) {
+          // bỏ qua ảnh lỗi, không chặn phần sao lưu còn lại
+        }
+      }
+
+      const payload = {
+        backupType: "chatbot-ho-tro-website",
+        backupVersion: 2, // v2: có nhúng ảnh (uploadedImages) — v1 (cũ) chỉ có kb + settings
+        exportedAt: new Date().toISOString(),
+        kb: { entries: kbEntries },
+        settings,
+        uploadedImages,
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
+      a.href = url;
+      a.download = `sao-luu-du-lieu-chatbot-${stamp}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      const n = Object.keys(uploadedImages).length;
+      setBackupResult({ ok: true, message: `Đã tải file sao lưu${n > 0 ? ` (kèm ${n} ảnh đã tải lên)` : ""}.` });
+    } finally {
+      setBackingUp(false);
+    }
   }
 
   async function restoreBackup(event) {
     const file = event.target.files && event.target.files[0];
     if (!file) return;
     setBackupResult(null);
+    setRestoringBackup(true);
     try {
       const text = await file.text();
       const parsed = JSON.parse(text);
@@ -427,10 +469,32 @@ function App() {
           setSettingsForm(data.settings);
         }
       }
-      setBackupResult({ ok: true, message: `Đã khôi phục ${entries.length} mục tài liệu${parsed?.settings ? " + cài đặt" : ""} từ file sao lưu.` });
+
+      // Ghi lại các file ảnh đã tải lên (chỉ có ở file sao lưu tạo từ bản mới, backupVersion >= 2)
+      const uploadedImages = parsed?.uploadedImages || {};
+      const paths = Object.keys(uploadedImages);
+      let imageOk = 0;
+      let imageFailed = 0;
+      for (const p of paths) {
+        try {
+          const r = await fetch("/api/restore-image", { method: "POST", headers: authHeaders(adminToken), body: JSON.stringify({ path: p, dataUrl: uploadedImages[p] }) });
+          if (r.ok) imageOk++; else imageFailed++;
+        } catch (e) {
+          imageFailed++;
+        }
+      }
+
+      let message = `Đã khôi phục ${entries.length} mục tài liệu${parsed?.settings ? " + cài đặt" : ""}.`;
+      if (paths.length > 0) {
+        message += ` Đã ghi lại ${imageOk}/${paths.length} ảnh đã tải lên.`;
+      } else {
+        message += " Lưu ý: file sao lưu này không có ảnh nhúng kèm theo (có thể tạo từ bản cũ trước khi có tính năng này) — nếu tài liệu có ảnh bị vỡ, cần tải lại ảnh thủ công cho các mục đó.";
+      }
+      setBackupResult({ ok: imageFailed === 0, message });
     } catch (err) {
       setBackupResult({ ok: false, message: err.message || "Không đọc được file sao lưu." });
     } finally {
+      setRestoringBackup(false);
       event.target.value = "";
     }
   }
@@ -801,12 +865,16 @@ function App() {
             <div style={{ ...card, border: "1px solid #F0D9BE", background: "#FFF9F0" }}>
               <div style={sectionTitle}>🗄️ Sao lưu &amp; khôi phục dữ liệu</div>
               <div style={{ fontSize: 12.5, color: "#6B6255", lineHeight: 1.6, marginBottom: 12 }}>
-                ⚠️ Dữ liệu (tài liệu, cài đặt) đang lưu trên ổ đĩa tạm của server — <strong>có thể bị mất mỗi khi bạn cập nhật/deploy lại code</strong> (đặc biệt trên gói Free của Render). Hãy bấm <strong>Tải file sao lưu</strong> sau mỗi lần chỉnh sửa tài liệu quan trọng, và <strong>Khôi phục</strong> lại ngay sau khi deploy nếu thấy dữ liệu bị trống.
+                ⚠️ Dữ liệu (tài liệu, cài đặt, kể cả ảnh đã tải lên) đang lưu trên ổ đĩa tạm của server — <strong>có thể bị mất mỗi khi bạn cập nhật/deploy lại code</strong> (đặc biệt trên gói Free của Render). Hãy bấm <strong>Tải file sao lưu</strong> sau mỗi lần chỉnh sửa tài liệu quan trọng, và <strong>Khôi phục</strong> lại ngay sau khi deploy nếu thấy dữ liệu bị trống.
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button type="button" onClick={downloadBackup} style={{ ...primaryButtonStyle, width: "auto", flex: "1 1 200px", marginTop: 0 }}>💾 Tải file sao lưu</button>
+                <button type="button" onClick={downloadBackup} disabled={backingUp} style={{ ...primaryButtonStyle, width: "auto", flex: "1 1 200px", marginTop: 0 }}>
+                  {backingUp ? "⏳ Đang chuẩn bị file (kèm ảnh)..." : "💾 Tải file sao lưu"}
+                </button>
                 <input ref={backupInputRef} type="file" accept=".json" onChange={restoreBackup} style={{ display: "none" }} />
-                <button type="button" onClick={() => backupInputRef.current && backupInputRef.current.click()} style={{ ...outlineButton, height: "auto", padding: "10px 16px", flex: "1 1 200px" }}>📤 Khôi phục từ file sao lưu</button>
+                <button type="button" onClick={() => backupInputRef.current && backupInputRef.current.click()} disabled={restoringBackup} style={{ ...outlineButton, height: "auto", padding: "10px 16px", flex: "1 1 200px" }}>
+                  {restoringBackup ? "⏳ Đang khôi phục..." : "📤 Khôi phục từ file sao lưu"}
+                </button>
               </div>
               {backupResult && (
                 <div style={{ marginTop: 10, fontSize: 12.5, fontWeight: 600, color: backupResult.ok ? "#3D7A4E" : "#B3261E" }}>
