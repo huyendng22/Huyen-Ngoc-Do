@@ -128,6 +128,25 @@ app.post("/api/upload-image", requireAdmin, (req, res) => {
   });
 });
 
+// Ghi lại file ảnh lên server từ dữ liệu base64 trong file sao lưu (dùng khi Khôi phục,
+// vì file sao lưu chỉ có thể chứa dữ liệu ảnh, không thể tự ghi vào ổ đĩa server).
+app.post("/api/restore-image", requireAdmin, (req, res) => {
+  const { path: relPath, dataUrl } = req.body || {};
+  if (!relPath || typeof relPath !== "string" || !relPath.startsWith("/uploads/")) {
+    return res.status(400).json({ ok: false, error: "Đường dẫn ảnh không hợp lệ." });
+  }
+  const matches = /^data:image\/[a-zA-Z0-9.+-]+;base64,([\s\S]+)$/.exec(dataUrl || "");
+  if (!matches) return res.status(400).json({ ok: false, error: "Dữ liệu ảnh không hợp lệ." });
+  const filename = path.basename(relPath); // chống path traversal, chỉ lấy tên file
+  try {
+    const buffer = Buffer.from(matches[1], "base64");
+    fs.writeFileSync(path.join(UPLOADS_DIR, filename), buffer);
+    res.json({ ok: true, url: `/uploads/${filename}` });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: "Không ghi được file ảnh lên server." });
+  }
+});
+
 app.get("/api/kb", (req, res) => {
   res.json(kb);
 });
