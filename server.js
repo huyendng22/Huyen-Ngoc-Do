@@ -85,6 +85,23 @@ function getCategoryLabel(id) {
   return found ? found.label : id;
 }
 
+// Đọc TOÀN BỘ ảnh của 1 mục, gộp cả kiểu dữ liệu cũ (imageUrl/imageUrl2) lẫn kiểu mới
+// (images - mảng không giới hạn số lượng), không trùng lặp. Tương ứng với hàm cùng tên phía client.
+function getEntryImages(entry) {
+  if (!entry) return [];
+  const legacy = [entry.imageUrl, entry.imageUrl2].filter(Boolean);
+  const modern = Array.isArray(entry.images) ? entry.images.filter(Boolean) : [];
+  const seen = new Set();
+  const result = [];
+  [...legacy, ...modern].forEach((u) => {
+    if (!seen.has(u)) {
+      seen.add(u);
+      result.push(u);
+    }
+  });
+  return result;
+}
+
 const DEFAULT_GREETING =
   "Chào bạn, tôi là chatbot hỗ trợ phần mềm. Hãy đặt câu hỏi, tôi sẽ trả lời dựa trên tài liệu hướng dẫn đã được nạp.";
 const ESCALATION_MARKER = "[CẦN_CHUYÊN_GIA]";
@@ -172,8 +189,8 @@ app.post("/api/kb/import", requireAdmin, (req, res) => {
     category: e.category || "KHAC",
     content: String(e.content || "").trim(),
     videoUrl: String(e.videoUrl || "").trim(),
-    imageUrl: String(e.imageUrl || "").trim(),
-    imageUrl2: String(e.imageUrl2 || "").trim(),
+    images: Array.isArray(e.images) ? e.images.map((u) => String(u || "").trim()).filter(Boolean) : [],
+    aliases: Array.isArray(e.aliases) ? e.aliases.map((a) => String(a || "").trim()).filter(Boolean) : [],
   }));
   kb = { entries: [...withIds, ...kb.entries] };
   writeJson(KB_FILE, kb);
@@ -222,9 +239,12 @@ app.post("/api/chat", async (req, res) => {
   const kbText = kb.entries
     .map((e, i) => {
       let block = `[Mục ${i + 1}] Câu hỏi: ${e.title}\nDanh mục: ${getCategoryLabel(e.category)}\nCâu trả lời: ${e.content}`;
+      if (Array.isArray(e.aliases) && e.aliases.length > 0) block += `\nCách hỏi khác cho mục này: ${e.aliases.join(" | ")}`;
       if (e.videoUrl) block += `\nVideo hướng dẫn: ${toAbsolute(e.videoUrl)}`;
-      if (e.imageUrl) block += `\nHình ảnh minh hoạ 1: ${toAbsolute(e.imageUrl)}`;
-      if (e.imageUrl2) block += `\nHình ảnh minh hoạ 2: ${toAbsolute(e.imageUrl2)}`;
+      const images = getEntryImages(e);
+      images.forEach((img, idx) => {
+        block += `\nHình ảnh minh hoạ ${idx + 1}: ${toAbsolute(img)}`;
+      });
       return block;
     })
     .join("\n\n");
