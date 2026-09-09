@@ -254,7 +254,7 @@ function App() {
       const isImage = /\.(png|jpe?g|gif|webp)(\?.*)?$/i.test(part);
       if (isImage) {
         return (
-          <img key={i} src={part} alt="Hình minh hoạ" onClick={() => setLightboxSrc(part)} style={{ maxWidth: "100%", maxHeight: 200, borderRadius: 8, display: "block", margin: "6px 0", cursor: "zoom-in" }} onError={(e) => { e.target.style.display = "none"; }} />
+          <SafeImage key={i} src={part} alt="Hình minh hoạ" onClick={() => setLightboxSrc(part)} style={{ maxWidth: "100%", maxHeight: 200, borderRadius: 8, display: "block", margin: "6px 0", cursor: "zoom-in" }} />
         );
       }
       return (
@@ -738,12 +738,14 @@ function App() {
       });
 
       const uploadedImages = {};
+      let failedImages = 0;
       for (const p of localImagePaths) {
         try {
           const r = await fetch(p);
           if (r.ok) uploadedImages[p] = await blobToDataUrl(await r.blob());
+          else failedImages++;
         } catch (e) {
-          // bỏ qua ảnh lỗi, không chặn phần sao lưu còn lại
+          failedImages++; // ảnh đã mất khỏi server (VD sau khi Render deploy lại) — không có gì để nhúng
         }
       }
 
@@ -767,7 +769,11 @@ function App() {
       URL.revokeObjectURL(url);
 
       const n = Object.keys(uploadedImages).length;
-      setBackupResult({ ok: true, message: `Đã tải file sao lưu${n > 0 ? ` (kèm ${n} ảnh đã tải lên)` : ""}.` });
+      let message = `Đã tải file sao lưu${n > 0 ? ` (kèm ${n} ảnh đã tải lên)` : ""}.`;
+      if (failedImages > 0) {
+        message += ` ⚠️ Có ${failedImages} ảnh KHÔNG nhúng được (đã mất khỏi server, có thể do vừa deploy code) — file sao lưu này sẽ không khôi phục lại được (các) ảnh đó. Nếu có bản sao lưu cũ hơn còn ảnh, hãy giữ lại bản đó.`;
+      }
+      setBackupResult({ ok: failedImages === 0, message });
     } finally {
       setBackingUp(false);
     }
@@ -1034,6 +1040,14 @@ function App() {
                     onChange={(e) => handleContentChange(e, (v) => setForm((prev) => ({ ...prev, content: v })))}
                     onKeyDown={(e) => handleContentKeyDown(e, contentRef, form.content, (v) => setForm((prev) => ({ ...prev, content: v })))}
                   />
+                  {form.content.trim() && (
+                    <div style={{ marginTop: 6, marginBottom: 12 }}>
+                      <div style={{ fontSize: 11, color: "#8A8272", marginBottom: 4 }}>👁️ Xem trước (chữ đậm/nghiêng/gạch chân/bullet hiện đúng như lúc trả lời thật):</div>
+                      <div style={{ background: "#FFFFFF", border: "1px solid #EEE9DD", borderRadius: 8, padding: 10, fontSize: 13, color: "#4A443B", lineHeight: 1.5 }}>
+                        {renderFormattedBlock(form.content, "preview-add")}
+                      </div>
+                    </div>
+                  )}
 
                   <label style={labelStyle}>🎥 Link video hướng dẫn (tuỳ chọn)</label>
                   <input style={inputStyle} placeholder="vd: https://youtube.com/watch?v=..." value={form.videoUrl} onChange={(e) => setForm({ ...form, videoUrl: e.target.value })} />
@@ -1170,6 +1184,14 @@ function App() {
                         onChange={(ev) => handleContentChange(ev, (v) => setEditForm((prev) => ({ ...prev, content: v })))}
                         onKeyDown={(ev) => handleContentKeyDown(ev, editContentRef, editForm.content, (v) => setEditForm((prev) => ({ ...prev, content: v })))}
                       />
+                      {editForm.content.trim() && (
+                        <div style={{ marginTop: 6, marginBottom: 12 }}>
+                          <div style={{ fontSize: 11, color: "#8A8272", marginBottom: 4 }}>👁️ Xem trước (chữ đậm/nghiêng/gạch chân/bullet hiện đúng như lúc trả lời thật):</div>
+                          <div style={{ background: "#FFFFFF", border: "1px solid #EEE9DD", borderRadius: 8, padding: 10, fontSize: 13, color: "#4A443B", lineHeight: 1.5 }}>
+                            {renderFormattedBlock(editForm.content, "preview-edit")}
+                          </div>
+                        </div>
+                      )}
 
                       <label style={labelStyle}>🎥 Link video hướng dẫn (tuỳ chọn)</label>
                       <input style={inputStyle} placeholder="vd: https://youtube.com/watch?v=..." value={editForm.videoUrl} onChange={(ev) => setEditForm({ ...editForm, videoUrl: ev.target.value })} />
@@ -1237,7 +1259,7 @@ function App() {
                             <div style={miniLabel}>🖼️ Hình ảnh minh hoạ ({getEntryImages(e).length})</div>
                             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
                               {getEntryImages(e).map((url, idx) => (
-                                <img key={idx} src={url} alt={e.title} onClick={() => setLightboxSrc(url)} style={{ maxWidth: 220, maxHeight: 140, borderRadius: 8, border: "1px solid #DDD7C9", cursor: "zoom-in" }} onError={(ev) => { ev.target.style.display = "none"; }} />
+                                <SafeImage key={idx} src={url} alt={e.title} onClick={() => setLightboxSrc(url)} style={{ maxWidth: 220, maxHeight: 140, borderRadius: 8, border: "1px solid #DDD7C9", cursor: "zoom-in" }} />
                               ))}
                             </div>
                           </div>
@@ -1279,7 +1301,7 @@ function App() {
                       </div>
                     )}
                     {m.role === "assistant" && m.source === "kb" && Array.isArray(m.images) && m.images.map((url, idx) => (
-                      <img key={idx} src={url} alt={m.matchedTitle || "Hình minh hoạ"} onClick={() => setLightboxSrc(url)} style={{ maxWidth: "100%", maxHeight: 200, borderRadius: 8, display: "block", marginTop: 8, cursor: "zoom-in" }} onError={(e) => { e.target.style.display = "none"; }} />
+                      <SafeImage key={idx} src={url} alt={m.matchedTitle || "Hình minh hoạ"} onClick={() => setLightboxSrc(url)} style={{ maxWidth: "100%", maxHeight: 200, borderRadius: 8, display: "block", marginTop: 8, cursor: "zoom-in" }} />
                     ))}
                   </div>
 
@@ -1423,6 +1445,23 @@ function App() {
 
 function TabButton({ active, onClick, label }) {
   return <button onClick={onClick} style={{ padding: "8px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, background: active ? "#F3F1EC" : "transparent", color: active ? "#12303F" : "#CBD8DD" }}>{label}</button>;
+}
+// Ảnh minh hoạ có "tự bảo vệ": nếu load lỗi (VD file đã mất khỏi server sau khi Render deploy lại),
+// hiện rõ khung cảnh báo thay vì âm thầm biến mất — để người dùng biết ngay cần tải lại ảnh.
+function SafeImage({ src, alt, onClick, style }) {
+  const [broken, setBroken] = useState(false);
+  if (broken) {
+    return (
+      <div
+        title="Ảnh đã mất trên server, cần tải lại"
+        style={{ ...style, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#FFF3E0", color: "#B5652F", fontSize: 11, textAlign: "center", padding: 6, border: "1px dashed #E0A458", cursor: "default" }}
+      >
+        <span style={{ fontSize: 16 }}>⚠️</span>
+        <span>Ảnh lỗi — cần tải lại</span>
+      </div>
+    );
+  }
+  return <img src={src} alt={alt} onClick={onClick} style={style} onError={() => setBroken(true)} />;
 }
 function ModeButton({ active, onClick, label }) {
   return <button onClick={onClick} style={{ flex: 1, padding: "8px 10px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 700, background: active ? "#FFFFFF" : "transparent", color: active ? "#12303F" : "#8A8272" }}>{label}</button>;
