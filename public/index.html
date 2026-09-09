@@ -50,14 +50,23 @@ function getEntryImages(entry) {
   return result;
 }
 
+// Dùng khi HIỂN THỊ câu trả lời: chỉ lấy những ảnh CHƯA được chèn thẳng vào nội dung (content),
+// để tránh hiện trùng 2 lần (1 lần chèn giữa văn bản + 1 lần lặp lại ở khung "Hình ảnh minh hoạ" cuối).
+// Khi QUẢN LÝ (form thêm/sửa) vẫn dùng getEntryImages đầy đủ để không mất ảnh nào khỏi tầm kiểm soát.
+function getGalleryImages(entry) {
+  const all = getEntryImages(entry);
+  const content = String((entry && entry.content) || "");
+  return all.filter((u) => !content.includes(u));
+}
+
 // ===== Định dạng văn bản đơn giản: **đậm**, *nghiêng*, __gạch chân__, gạch đầu dòng (- hoặc •), số thứ tự (1. 2. ...) =====
 // Không dùng thư viện ngoài, chỉ ghép thành React element trực tiếp (an toàn, không chèn HTML thô).
-function parseInlineFormatting(str, keyPrefix) {
+function parseInlineFormatting(str, keyPrefix, onImageClick) {
   const nodes = [];
   // "->" luôn được hiện thành mũi tên "→" (phòng trường hợp dữ liệu không đi qua textarea có
   // tự động thay, VD nhập từ Excel, AI tự trả lời...).
   let remaining = String(str || "").replace(/->/g, "→");
-  const regex = /(\*\*(.+?)\*\*)|(__(.+?)__)|(\*(.+?)\*)/;
+  const regex = /(\*\*(.+?)\*\*)|(__(.+?)__)|(\*(.+?)\*)|(https?:\/\/[^\s]+)/;
   let key = 0;
   while (remaining) {
     const m = regex.exec(remaining);
@@ -69,14 +78,40 @@ function parseInlineFormatting(str, keyPrefix) {
     if (m[2] !== undefined) nodes.push(<strong key={`${keyPrefix}-b${key++}`}>{m[2]}</strong>);
     else if (m[4] !== undefined) nodes.push(<u key={`${keyPrefix}-u${key++}`}>{m[4]}</u>);
     else if (m[6] !== undefined) nodes.push(<em key={`${keyPrefix}-i${key++}`}>{m[6]}</em>);
+    else if (m[7] !== undefined) {
+      const url = m[7];
+      if (isImageUrl(url)) {
+        nodes.push(
+          <SafeImage
+            key={`${keyPrefix}-img${key++}`}
+            src={url}
+            alt="Hình minh hoạ"
+            onClick={onImageClick ? () => onImageClick(url) : undefined}
+            style={{ maxWidth: "100%", maxHeight: 220, borderRadius: 8, display: "block", margin: "6px 0", cursor: onImageClick ? "zoom-in" : "default" }}
+          />
+        );
+      } else {
+        nodes.push(
+          <a key={`${keyPrefix}-a${key++}`} href={url} target="_blank" rel="noreferrer" style={{ color: "inherit", textDecoration: "underline", wordBreak: "break-all" }}>
+            {url}
+          </a>
+        );
+      }
+    }
     remaining = remaining.slice(m.index + m[0].length);
   }
   return nodes;
 }
 
+function isImageUrl(url) {
+  return /\.(png|jpe?g|gif|webp)(\?.*)?$/i.test(url);
+}
+
 // Nhận 1 đoạn text thuần (có thể nhiều dòng), trả về mảng React node đã dựng sẵn bullet/số thứ tự/đậm/nghiêng/gạch chân.
 // Phân biệt rõ 3 kiểu danh sách: "- " = gạch đầu dòng, "• " = chấm tròn, "1. "/"1) " = số thứ tự.
-function renderFormattedBlock(text, keyPrefix) {
+// Nếu 1 dòng CHỈ CHỨA đúng 1 link (không có chữ nào khác) -> hiện thẳng thành ảnh/link ngay tại
+// đúng vị trí dòng đó, để trả lời quy trình nhiều bước có thể chèn ảnh minh hoạ xen kẽ từng bước.
+function renderFormattedBlock(text, keyPrefix, onImageClick) {
   const lines = String(text || "").split("\n");
   const blocks = [];
   let currentList = null; // { type: "dash" | "dot" | "ol", items: [] }
@@ -89,10 +124,14 @@ function renderFormattedBlock(text, keyPrefix) {
   }
 
   lines.forEach((line) => {
+    const bareUrlMatch = line.trim().match(/^(https?:\/\/\S+)$/);
     const dashMatch = line.match(/^\s*-\s+(.*)$/);
     const dotMatch = line.match(/^\s*[•*]\s+(.*)$/);
     const numberedMatch = line.match(/^\s*\d+[.)]\s+(.*)$/);
-    if (dashMatch) {
+    if (bareUrlMatch) {
+      flushList();
+      blocks.push({ type: "url", url: bareUrlMatch[1] });
+    } else if (dashMatch) {
       if (!currentList || currentList.type !== "dash") { flushList(); currentList = { type: "dash", items: [] }; }
       currentList.items.push(dashMatch[1]);
     } else if (dotMatch) {
@@ -110,29 +149,47 @@ function renderFormattedBlock(text, keyPrefix) {
 
   return blocks.map((b, i) => {
     const k = `${keyPrefix}-blk${i}`;
+    if (b.type === "url") {
+      if (isImageUrl(b.url)) {
+        return (
+          <SafeImage
+            key={k}
+            src={b.url}
+            alt="Hình minh hoạ"
+            onClick={onImageClick ? () => onImageClick(b.url) : undefined}
+            style={{ maxWidth: "100%", maxHeight: 260, borderRadius: 8, display: "block", margin: "8px 0", cursor: onImageClick ? "zoom-in" : "default" }}
+          />
+        );
+      }
+      return (
+        <div key={k} style={{ margin: "4px 0" }}>
+          <a href={b.url} target="_blank" rel="noreferrer" style={{ color: "inherit", textDecoration: "underline", wordBreak: "break-all" }}>{b.url}</a>
+        </div>
+      );
+    }
     if (b.type === "dash") {
       return (
         <ul key={k} style={{ margin: "4px 0", paddingLeft: 22, listStyleType: "none" }}>
-          {b.items.map((it, j) => <li key={`${k}-${j}`} style={{ marginBottom: 2 }}>– {parseInlineFormatting(it, `${k}-${j}`)}</li>)}
+          {b.items.map((it, j) => <li key={`${k}-${j}`} style={{ marginBottom: 2 }}>– {parseInlineFormatting(it, `${k}-${j}`, onImageClick)}</li>)}
         </ul>
       );
     }
     if (b.type === "dot") {
       return (
         <ul key={k} style={{ margin: "4px 0", paddingLeft: 22, listStyleType: "disc" }}>
-          {b.items.map((it, j) => <li key={`${k}-${j}`} style={{ marginBottom: 2 }}>{parseInlineFormatting(it, `${k}-${j}`)}</li>)}
+          {b.items.map((it, j) => <li key={`${k}-${j}`} style={{ marginBottom: 2 }}>{parseInlineFormatting(it, `${k}-${j}`, onImageClick)}</li>)}
         </ul>
       );
     }
     if (b.type === "ol") {
       return (
         <ol key={k} style={{ margin: "4px 0", paddingLeft: 22 }}>
-          {b.items.map((it, j) => <li key={`${k}-${j}`} style={{ marginBottom: 2 }}>{parseInlineFormatting(it, `${k}-${j}`)}</li>)}
+          {b.items.map((it, j) => <li key={`${k}-${j}`} style={{ marginBottom: 2 }}>{parseInlineFormatting(it, `${k}-${j}`, onImageClick)}</li>)}
         </ol>
       );
     }
     if (b.text.trim() === "") return <div key={k} style={{ height: 8 }} />;
-    return <div key={k}>{parseInlineFormatting(b.text, k)}</div>;
+    return <div key={k}>{parseInlineFormatting(b.text, k, onImageClick)}</div>;
   });
 }
 function resolveCategoryId(raw, defaultId) {
@@ -247,22 +304,7 @@ const KB_MATCH_MIN_MARGIN = 0.05;
 
 function App() {
   function renderMessageContent(text) {
-    const urlRegex = /(https?:\/\/[^\s]+)/g;
-    const parts = String(text || "").split(urlRegex);
-    return parts.map((part, i) => {
-      if (!/^https?:\/\//.test(part)) return <React.Fragment key={i}>{renderFormattedBlock(part, `msg${i}`)}</React.Fragment>;
-      const isImage = /\.(png|jpe?g|gif|webp)(\?.*)?$/i.test(part);
-      if (isImage) {
-        return (
-          <SafeImage key={i} src={part} alt="Hình minh hoạ" onClick={() => setLightboxSrc(part)} style={{ maxWidth: "100%", maxHeight: 200, borderRadius: 8, display: "block", margin: "6px 0", cursor: "zoom-in" }} />
-        );
-      }
-      return (
-        <a key={i} href={part} target="_blank" rel="noreferrer" style={{ color: "inherit", textDecoration: "underline", wordBreak: "break-all" }}>
-          {part}
-        </a>
-      );
-    });
+    return renderFormattedBlock(text, "msg", setLightboxSrc);
   }
 
   const [tab, setTab] = useState("kb");
@@ -552,6 +594,31 @@ function App() {
 
   function removeImageAt(setTarget, index) {
     setTarget((prev) => ({ ...prev, images: prev.images.filter((_, i) => i !== index) }));
+  }
+
+  // Chèn link ảnh (dạng 1 dòng riêng) vào đúng vị trí con trỏ trong ô Câu trả lời — để trả lời quy
+  // trình nhiều bước có thể xen kẽ ảnh minh hoạ ngay tại đúng bước, thay vì dồn hết ảnh xuống cuối.
+  function insertImageIntoContent(ref, contentValue, setContentValue, url) {
+    const ta = ref.current;
+    if (!ta) {
+      const sep = contentValue && !contentValue.endsWith("\n") ? "\n" : "";
+      setContentValue(contentValue + sep + url + "\n");
+      return;
+    }
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const before = contentValue.slice(0, start);
+    const after = contentValue.slice(end);
+    const needsNlBefore = before.length > 0 && !before.endsWith("\n");
+    const needsNlAfter = after.length > 0 && !after.startsWith("\n");
+    const insertion = (needsNlBefore ? "\n" : "") + url + "\n" + (needsNlAfter ? "" : "");
+    const newValue = before + insertion + after;
+    setContentValue(newValue);
+    const newPos = before.length + insertion.length;
+    requestAnimationFrame(() => {
+      ta.focus();
+      ta.setSelectionRange(newPos, newPos);
+    });
   }
 
   // Bọc vùng đang bôi đen trong textarea bằng ký hiệu định dạng (đậm/nghiêng/gạch chân).
@@ -883,7 +950,7 @@ function App() {
           text: matched.content,
           matchedTitle: matched.title,
           videoUrl: matched.videoUrl || "",
-          images: getEntryImages(matched),
+          images: getGalleryImages(matched),
           question,
         },
       ]);
@@ -914,7 +981,7 @@ function App() {
               text: entry.content,
               matchedTitle: entry.title,
               videoUrl: entry.videoUrl || "",
-              images: getEntryImages(entry),
+              images: getGalleryImages(entry),
               question: m.question,
             }
           : m
@@ -1030,7 +1097,7 @@ function App() {
                     <button type="button" title="Danh sách gạch đầu dòng" onClick={() => prefixLines(contentRef, form.content, (v) => setForm((prev) => ({ ...prev, content: v })), "dash")} style={formatToolbarBtn}>–≡</button>
                     <button type="button" title="Danh sách chấm tròn" onClick={() => prefixLines(contentRef, form.content, (v) => setForm((prev) => ({ ...prev, content: v })), "dot")} style={formatToolbarBtn}>•≡</button>
                     <button type="button" title="Danh sách đánh số" onClick={() => prefixLines(contentRef, form.content, (v) => setForm((prev) => ({ ...prev, content: v })), "ol")} style={formatToolbarBtn}>1.≡</button>
-                    <div style={{ fontSize: 11, color: "#8A8272", alignSelf: "center", marginLeft: 4 }}>Ctrl+B/I/U = đậm/nghiêng/gạch chân. Gõ "-&gt;" tự ra "→". Đầu dòng gõ "- " hoặc "* " để tự bullet, Enter nối tiếp, Enter lần 2 (dòng trống) để thoát.</div>
+                    <div style={{ fontSize: 11, color: "#8A8272", alignSelf: "center", marginLeft: 4 }}>Ctrl+B/I/U = đậm/nghiêng/gạch chân. Gõ "-&gt;" tự ra "→". Đầu dòng gõ "- " hoặc "* " để tự bullet, Enter nối tiếp, Enter lần 2 (dòng trống) để thoát. Muốn chèn ảnh vào giữa các bước: thêm ảnh ở khung bên dưới rồi bấm "➕ Chèn vào câu trả lời" đúng vị trí con trỏ.</div>
                   </div>
                   <textarea
                     ref={contentRef}
@@ -1044,7 +1111,7 @@ function App() {
                     <div style={{ marginTop: 6, marginBottom: 12 }}>
                       <div style={{ fontSize: 11, color: "#8A8272", marginBottom: 4 }}>👁️ Xem trước (chữ đậm/nghiêng/gạch chân/bullet hiện đúng như lúc trả lời thật):</div>
                       <div style={{ background: "#FFFFFF", border: "1px solid #EEE9DD", borderRadius: 8, padding: 10, fontSize: 13, color: "#4A443B", lineHeight: 1.5 }}>
-                        {renderFormattedBlock(form.content, "preview-add")}
+                        {renderFormattedBlock(form.content, "preview-add", setLightboxSrc)}
                       </div>
                     </div>
                   )}
@@ -1057,10 +1124,20 @@ function App() {
                   {form.images.length > 0 && (
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
                       {form.images.map((url, idx) => (
-                        <div key={idx} style={{ position: "relative", display: "inline-block" }}>
-                          <img src={url} alt={`Ảnh ${idx + 1}`} onClick={() => setLightboxSrc(url)} style={{ width: 90, height: 90, objectFit: "cover", borderRadius: 8, border: "1px solid #DDD7C9", cursor: "zoom-in" }} onError={(e) => { e.target.style.opacity = 0.25; }} />
-                          <button type="button" onClick={() => removeImageAt(setForm, idx)} style={{ position: "absolute", top: 2, right: 2, background: "rgba(18,48,63,0.8)", color: "#fff", border: "none", borderRadius: 6, padding: "1px 6px", fontSize: 11, cursor: "pointer" }}>
-                            ✕
+                        <div key={idx} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+                          <div style={{ position: "relative", display: "inline-block" }}>
+                            <img src={url} alt={`Ảnh ${idx + 1}`} onClick={() => setLightboxSrc(url)} style={{ width: 90, height: 90, objectFit: "cover", borderRadius: 8, border: "1px solid #DDD7C9", cursor: "zoom-in" }} onError={(e) => { e.target.style.opacity = 0.25; }} />
+                            <button type="button" onClick={() => removeImageAt(setForm, idx)} style={{ position: "absolute", top: 2, right: 2, background: "rgba(18,48,63,0.8)", color: "#fff", border: "none", borderRadius: 6, padding: "1px 6px", fontSize: 11, cursor: "pointer" }}>
+                              ✕
+                            </button>
+                          </div>
+                          <button
+                            type="button"
+                            title="Chèn ảnh này vào đúng vị trí con trỏ trong Câu trả lời"
+                            onClick={() => insertImageIntoContent(contentRef, form.content, (v) => setForm((prev) => ({ ...prev, content: v })), url)}
+                            style={{ fontSize: 10.5, background: "#FFFFFF", border: "1px solid #DDD7C9", borderRadius: 6, padding: "2px 6px", cursor: "pointer", color: "#12303F", whiteSpace: "nowrap" }}
+                          >
+                            ➕ Chèn vào câu trả lời
                           </button>
                         </div>
                       ))}
@@ -1188,7 +1265,7 @@ function App() {
                         <div style={{ marginTop: 6, marginBottom: 12 }}>
                           <div style={{ fontSize: 11, color: "#8A8272", marginBottom: 4 }}>👁️ Xem trước (chữ đậm/nghiêng/gạch chân/bullet hiện đúng như lúc trả lời thật):</div>
                           <div style={{ background: "#FFFFFF", border: "1px solid #EEE9DD", borderRadius: 8, padding: 10, fontSize: 13, color: "#4A443B", lineHeight: 1.5 }}>
-                            {renderFormattedBlock(editForm.content, "preview-edit")}
+                            {renderFormattedBlock(editForm.content, "preview-edit", setLightboxSrc)}
                           </div>
                         </div>
                       )}
@@ -1201,10 +1278,20 @@ function App() {
                       {editForm.images.length > 0 && (
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
                           {editForm.images.map((url, idx) => (
-                            <div key={idx} style={{ position: "relative", display: "inline-block" }}>
-                              <img src={url} alt={`Ảnh ${idx + 1}`} onClick={() => setLightboxSrc(url)} style={{ width: 90, height: 90, objectFit: "cover", borderRadius: 8, border: "1px solid #DDD7C9", cursor: "zoom-in" }} onError={(e) => { e.target.style.opacity = 0.25; }} />
-                              <button type="button" onClick={() => removeImageAt(setEditForm, idx)} style={{ position: "absolute", top: 2, right: 2, background: "rgba(18,48,63,0.8)", color: "#fff", border: "none", borderRadius: 6, padding: "1px 6px", fontSize: 11, cursor: "pointer" }}>
-                                ✕
+                            <div key={idx} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+                              <div style={{ position: "relative", display: "inline-block" }}>
+                                <img src={url} alt={`Ảnh ${idx + 1}`} onClick={() => setLightboxSrc(url)} style={{ width: 90, height: 90, objectFit: "cover", borderRadius: 8, border: "1px solid #DDD7C9", cursor: "zoom-in" }} onError={(e) => { e.target.style.opacity = 0.25; }} />
+                                <button type="button" onClick={() => removeImageAt(setEditForm, idx)} style={{ position: "absolute", top: 2, right: 2, background: "rgba(18,48,63,0.8)", color: "#fff", border: "none", borderRadius: 6, padding: "1px 6px", fontSize: 11, cursor: "pointer" }}>
+                                  ✕
+                                </button>
+                              </div>
+                              <button
+                                type="button"
+                                title="Chèn ảnh này vào đúng vị trí con trỏ trong Câu trả lời"
+                                onClick={() => insertImageIntoContent(editContentRef, editForm.content, (v) => setEditForm((prev) => ({ ...prev, content: v })), url)}
+                                style={{ fontSize: 10.5, background: "#FFFFFF", border: "1px solid #DDD7C9", borderRadius: 6, padding: "2px 6px", cursor: "pointer", color: "#12303F", whiteSpace: "nowrap" }}
+                              >
+                                ➕ Chèn vào câu trả lời
                               </button>
                             </div>
                           ))}
@@ -1246,7 +1333,7 @@ function App() {
                         )}
                         <div style={pill}>{getCategoryLabel(e.category)}</div>
                         <div style={miniLabel}>Câu trả lời</div>
-                        <div style={{ fontSize: 13, color: "#4A443B", lineHeight: 1.5 }}>{renderFormattedBlock(e.content, `view-${e.id}`)}</div>
+                        <div style={{ fontSize: 13, color: "#4A443B", lineHeight: 1.5 }}>{renderFormattedBlock(e.content, `view-${e.id}`, setLightboxSrc)}</div>
                         {e.videoUrl && (
                           <div style={{ marginTop: 8 }}>
                             <a href={e.videoUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, color: "#12303F", fontWeight: 700, textDecoration: "none" }}>
@@ -1254,11 +1341,11 @@ function App() {
                             </a>
                           </div>
                         )}
-                        {getEntryImages(e).length > 0 && (
+                        {getGalleryImages(e).length > 0 && (
                           <div style={{ marginTop: 8 }}>
-                            <div style={miniLabel}>🖼️ Hình ảnh minh hoạ ({getEntryImages(e).length})</div>
+                            <div style={miniLabel}>🖼️ Ảnh khác (chưa chèn vào câu trả lời) ({getGalleryImages(e).length})</div>
                             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
-                              {getEntryImages(e).map((url, idx) => (
+                              {getGalleryImages(e).map((url, idx) => (
                                 <SafeImage key={idx} src={url} alt={e.title} onClick={() => setLightboxSrc(url)} style={{ maxWidth: 220, maxHeight: 140, borderRadius: 8, border: "1px solid #DDD7C9", cursor: "zoom-in" }} />
                               ))}
                             </div>
