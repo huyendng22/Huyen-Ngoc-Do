@@ -49,6 +49,92 @@ function getEntryImages(entry) {
   });
   return result;
 }
+
+// ===== Định dạng văn bản đơn giản: **đậm**, *nghiêng*, __gạch chân__, gạch đầu dòng (- hoặc •), số thứ tự (1. 2. ...) =====
+// Không dùng thư viện ngoài, chỉ ghép thành React element trực tiếp (an toàn, không chèn HTML thô).
+function parseInlineFormatting(str, keyPrefix) {
+  const nodes = [];
+  // "->" luôn được hiện thành mũi tên "→" (phòng trường hợp dữ liệu không đi qua textarea có
+  // tự động thay, VD nhập từ Excel, AI tự trả lời...).
+  let remaining = String(str || "").replace(/->/g, "→");
+  const regex = /(\*\*(.+?)\*\*)|(__(.+?)__)|(\*(.+?)\*)/;
+  let key = 0;
+  while (remaining) {
+    const m = regex.exec(remaining);
+    if (!m) {
+      nodes.push(remaining);
+      break;
+    }
+    if (m.index > 0) nodes.push(remaining.slice(0, m.index));
+    if (m[2] !== undefined) nodes.push(<strong key={`${keyPrefix}-b${key++}`}>{m[2]}</strong>);
+    else if (m[4] !== undefined) nodes.push(<u key={`${keyPrefix}-u${key++}`}>{m[4]}</u>);
+    else if (m[6] !== undefined) nodes.push(<em key={`${keyPrefix}-i${key++}`}>{m[6]}</em>);
+    remaining = remaining.slice(m.index + m[0].length);
+  }
+  return nodes;
+}
+
+// Nhận 1 đoạn text thuần (có thể nhiều dòng), trả về mảng React node đã dựng sẵn bullet/số thứ tự/đậm/nghiêng/gạch chân.
+// Phân biệt rõ 3 kiểu danh sách: "- " = gạch đầu dòng, "• " = chấm tròn, "1. "/"1) " = số thứ tự.
+function renderFormattedBlock(text, keyPrefix) {
+  const lines = String(text || "").split("\n");
+  const blocks = [];
+  let currentList = null; // { type: "dash" | "dot" | "ol", items: [] }
+
+  function flushList() {
+    if (currentList) {
+      blocks.push(currentList);
+      currentList = null;
+    }
+  }
+
+  lines.forEach((line) => {
+    const dashMatch = line.match(/^\s*-\s+(.*)$/);
+    const dotMatch = line.match(/^\s*•\s+(.*)$/);
+    const numberedMatch = line.match(/^\s*\d+[.)]\s+(.*)$/);
+    if (dashMatch) {
+      if (!currentList || currentList.type !== "dash") { flushList(); currentList = { type: "dash", items: [] }; }
+      currentList.items.push(dashMatch[1]);
+    } else if (dotMatch) {
+      if (!currentList || currentList.type !== "dot") { flushList(); currentList = { type: "dot", items: [] }; }
+      currentList.items.push(dotMatch[1]);
+    } else if (numberedMatch) {
+      if (!currentList || currentList.type !== "ol") { flushList(); currentList = { type: "ol", items: [] }; }
+      currentList.items.push(numberedMatch[1]);
+    } else {
+      flushList();
+      blocks.push({ type: "line", text: line });
+    }
+  });
+  flushList();
+
+  return blocks.map((b, i) => {
+    const k = `${keyPrefix}-blk${i}`;
+    if (b.type === "dash") {
+      return (
+        <ul key={k} style={{ margin: "4px 0", paddingLeft: 22, listStyleType: "none" }}>
+          {b.items.map((it, j) => <li key={`${k}-${j}`} style={{ marginBottom: 2 }}>– {parseInlineFormatting(it, `${k}-${j}`)}</li>)}
+        </ul>
+      );
+    }
+    if (b.type === "dot") {
+      return (
+        <ul key={k} style={{ margin: "4px 0", paddingLeft: 22, listStyleType: "disc" }}>
+          {b.items.map((it, j) => <li key={`${k}-${j}`} style={{ marginBottom: 2 }}>{parseInlineFormatting(it, `${k}-${j}`)}</li>)}
+        </ul>
+      );
+    }
+    if (b.type === "ol") {
+      return (
+        <ol key={k} style={{ margin: "4px 0", paddingLeft: 22 }}>
+          {b.items.map((it, j) => <li key={`${k}-${j}`} style={{ marginBottom: 2 }}>{parseInlineFormatting(it, `${k}-${j}`)}</li>)}
+        </ol>
+      );
+    }
+    if (b.text.trim() === "") return <div key={k} style={{ height: 8 }} />;
+    return <div key={k}>{parseInlineFormatting(b.text, k)}</div>;
+  });
+}
 function resolveCategoryId(raw, defaultId) {
   const clean = String(raw || "").trim().toLowerCase();
   if (!clean) return defaultId;
@@ -162,9 +248,9 @@ const KB_MATCH_MIN_MARGIN = 0.05;
 function App() {
   function renderMessageContent(text) {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
-    const parts = text.split(urlRegex);
+    const parts = String(text || "").split(urlRegex);
     return parts.map((part, i) => {
-      if (!/^https?:\/\//.test(part)) return part;
+      if (!/^https?:\/\//.test(part)) return <React.Fragment key={i}>{renderFormattedBlock(part, `msg${i}`)}</React.Fragment>;
       const isImage = /\.(png|jpe?g|gif|webp)(\?.*)?$/i.test(part);
       if (isImage) {
         return (
@@ -197,6 +283,8 @@ function App() {
   const [bulkCategory, setBulkCategory] = useState(CATEGORIES[0].id);
   const [importResult, setImportResult] = useState(null);
   const fileInputRef = useRef(null);
+  const contentRef = useRef(null);
+  const editContentRef = useRef(null);
   const imageInputRef = useRef(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [suggestingAliases, setSuggestingAliases] = useState(false);
@@ -464,6 +552,106 @@ function App() {
 
   function removeImageAt(setTarget, index) {
     setTarget((prev) => ({ ...prev, images: prev.images.filter((_, i) => i !== index) }));
+  }
+
+  // Bọc vùng đang bôi đen trong textarea bằng ký hiệu định dạng (đậm/nghiêng/gạch chân).
+  // Nếu chưa bôi đen gì, chèn chữ mẫu để người dùng biết chỗ cần sửa.
+  // Tự động thay "->" vừa gõ xong (ngay trước con trỏ) thành mũi tên "→".
+  // Chỉ xét phần TRƯỚC con trỏ để không phá phần đang gõ dở phía sau (khi con trỏ ở giữa văn bản).
+  function applyArrowAutoReplace(rawValue, cursorPos) {
+    const before = rawValue.slice(0, cursorPos);
+    const after = rawValue.slice(cursorPos);
+    if (!before.includes("->")) return { value: rawValue, cursorPos, changed: false };
+    const newBefore = before.replace(/->/g, "→");
+    return { value: newBefore + after, cursorPos: newBefore.length, changed: newBefore.length !== before.length };
+  }
+
+  function handleContentChange(e, setValue) {
+    const ta = e.target;
+    const result = applyArrowAutoReplace(ta.value, ta.selectionStart);
+    setValue(result.value);
+    if (result.changed) {
+      requestAnimationFrame(() => ta.setSelectionRange(result.cursorPos, result.cursorPos));
+    }
+  }
+
+  // Khi đang gõ trong 1 dòng bullet/số thứ tự và nhấn Enter: tự động nối tiếp cùng kiểu ở dòng mới.
+  // Nếu dòng bullet hiện tại đang RỖNG (chỉ có mỗi ký hiệu, chưa gõ chữ) và nhấn Enter -> xoá ký hiệu,
+  // thoát khỏi danh sách, chuyển sang dòng trống bình thường (giống Word/Google Docs/Notion).
+  function handleContentKeyDown(e, value, setValue) {
+    if (e.key !== "Enter" || e.shiftKey) return;
+    const ta = e.target;
+    if (ta.selectionStart !== ta.selectionEnd) return; // đang bôi đen thì để hành vi mặc định
+    const pos = ta.selectionStart;
+    const before = value.slice(0, pos);
+    const after = value.slice(pos);
+    const lineStart = before.lastIndexOf("\n") + 1;
+    const currentLine = before.slice(lineStart);
+
+    const dashMatch = currentLine.match(/^(\s*)-\s+(.*)$/);
+    const dotMatch = currentLine.match(/^(\s*)•\s+(.*)$/);
+    const numMatch = currentLine.match(/^(\s*)(\d+)([.)])\s+(.*)$/);
+
+    let exitList = false;
+    let insertion = null;
+
+    if (dashMatch) {
+      if (dashMatch[2].trim() === "") exitList = true;
+      else insertion = `\n${dashMatch[1]}- `;
+    } else if (dotMatch) {
+      if (dotMatch[2].trim() === "") exitList = true;
+      else insertion = `\n${dotMatch[1]}• `;
+    } else if (numMatch) {
+      if (numMatch[4].trim() === "") exitList = true;
+      else insertion = `\n${numMatch[1]}${parseInt(numMatch[2], 10) + 1}${numMatch[3]} `;
+    }
+
+    if (exitList) {
+      e.preventDefault();
+      const newValue = value.slice(0, lineStart) + after;
+      setValue(newValue);
+      requestAnimationFrame(() => ta.setSelectionRange(lineStart, lineStart));
+      return;
+    }
+    if (insertion !== null) {
+      e.preventDefault();
+      const newValue = before + insertion + after;
+      const newPos = before.length + insertion.length;
+      setValue(newValue);
+      requestAnimationFrame(() => ta.setSelectionRange(newPos, newPos));
+    }
+  }
+
+  function wrapSelection(ref, value, setValue, marker) {
+    const ta = ref.current;
+    if (!ta) return;
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const selected = value.slice(start, end) || "chữ";
+    const newValue = value.slice(0, start) + marker + selected + marker + value.slice(end);
+    setValue(newValue);
+    requestAnimationFrame(() => {
+      ta.focus();
+      ta.setSelectionRange(start + marker.length, start + marker.length + selected.length);
+    });
+  }
+
+  // Thêm gạch đầu dòng (-) hoặc số thứ tự (1. 2. ...) vào đầu mỗi dòng đang bôi đen.
+  function prefixLines(ref, value, setValue, kind) {
+    const ta = ref.current;
+    if (!ta) return;
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const selText = value.slice(start, end) || "Mục 1\nMục 2";
+    const lines = selText.split("\n");
+    const marker = kind === "ol" ? null : kind === "dot" ? "• " : "- ";
+    const prefixed = lines.map((l, i) => (kind === "ol" ? `${i + 1}. ${l}` : `${marker}${l}`)).join("\n");
+    const newValue = value.slice(0, start) + prefixed + value.slice(end);
+    setValue(newValue);
+    requestAnimationFrame(() => {
+      ta.focus();
+      ta.setSelectionRange(start, start + prefixed.length);
+    });
   }
 
   async function suggestAliases(titleText, contentText, setTarget) {
@@ -818,7 +1006,23 @@ function App() {
                     {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label} ({c.id})</option>)}
                   </select>
                   <label style={labelStyle}>Câu trả lời</label>
-                  <textarea style={{ ...inputStyle, minHeight: 100, resize: "vertical" }} placeholder="Nhập câu trả lời chi tiết..." value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} />
+                  <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+                    <button type="button" title="Đậm" onClick={() => wrapSelection(contentRef, form.content, (v) => setForm((prev) => ({ ...prev, content: v })), "**")} style={formatToolbarBtn}><strong>B</strong></button>
+                    <button type="button" title="Nghiêng" onClick={() => wrapSelection(contentRef, form.content, (v) => setForm((prev) => ({ ...prev, content: v })), "*")} style={formatToolbarBtn}><em>I</em></button>
+                    <button type="button" title="Gạch chân" onClick={() => wrapSelection(contentRef, form.content, (v) => setForm((prev) => ({ ...prev, content: v })), "__")} style={formatToolbarBtn}><u>U</u></button>
+                    <button type="button" title="Danh sách gạch đầu dòng" onClick={() => prefixLines(contentRef, form.content, (v) => setForm((prev) => ({ ...prev, content: v })), "dash")} style={formatToolbarBtn}>–≡</button>
+                    <button type="button" title="Danh sách chấm tròn" onClick={() => prefixLines(contentRef, form.content, (v) => setForm((prev) => ({ ...prev, content: v })), "dot")} style={formatToolbarBtn}>•≡</button>
+                    <button type="button" title="Danh sách đánh số" onClick={() => prefixLines(contentRef, form.content, (v) => setForm((prev) => ({ ...prev, content: v })), "ol")} style={formatToolbarBtn}>1.≡</button>
+                    <div style={{ fontSize: 11, color: "#8A8272", alignSelf: "center", marginLeft: 4 }}>Gõ "-&gt;" tự ra "→". Enter để nối tiếp gạch đầu dòng/chấm tròn/số thứ tự, Enter lần 2 (dòng trống) để thoát.</div>
+                  </div>
+                  <textarea
+                    ref={contentRef}
+                    style={{ ...inputStyle, minHeight: 100, resize: "vertical" }}
+                    placeholder="Nhập câu trả lời chi tiết..."
+                    value={form.content}
+                    onChange={(e) => handleContentChange(e, (v) => setForm((prev) => ({ ...prev, content: v })))}
+                    onKeyDown={(e) => handleContentKeyDown(e, form.content, (v) => setForm((prev) => ({ ...prev, content: v })))}
+                  />
 
                   <label style={labelStyle}>🎥 Link video hướng dẫn (tuỳ chọn)</label>
                   <input style={inputStyle} placeholder="vd: https://youtube.com/watch?v=..." value={form.videoUrl} onChange={(e) => setForm({ ...form, videoUrl: e.target.value })} />
@@ -939,7 +1143,22 @@ function App() {
                         {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label} ({c.id})</option>)}
                       </select>
                       <label style={labelStyle}>Câu trả lời</label>
-                      <textarea style={{ ...inputStyle, minHeight: 100, resize: "vertical" }} placeholder="Nhập câu trả lời chi tiết..." value={editForm.content} onChange={(ev) => setEditForm({ ...editForm, content: ev.target.value })} />
+                      <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+                        <button type="button" title="Đậm" onClick={() => wrapSelection(editContentRef, editForm.content, (v) => setEditForm((prev) => ({ ...prev, content: v })), "**")} style={formatToolbarBtn}><strong>B</strong></button>
+                        <button type="button" title="Nghiêng" onClick={() => wrapSelection(editContentRef, editForm.content, (v) => setEditForm((prev) => ({ ...prev, content: v })), "*")} style={formatToolbarBtn}><em>I</em></button>
+                        <button type="button" title="Gạch chân" onClick={() => wrapSelection(editContentRef, editForm.content, (v) => setEditForm((prev) => ({ ...prev, content: v })), "__")} style={formatToolbarBtn}><u>U</u></button>
+                        <button type="button" title="Danh sách gạch đầu dòng" onClick={() => prefixLines(editContentRef, editForm.content, (v) => setEditForm((prev) => ({ ...prev, content: v })), "dash")} style={formatToolbarBtn}>–≡</button>
+                        <button type="button" title="Danh sách chấm tròn" onClick={() => prefixLines(editContentRef, editForm.content, (v) => setEditForm((prev) => ({ ...prev, content: v })), "dot")} style={formatToolbarBtn}>•≡</button>
+                        <button type="button" title="Danh sách đánh số" onClick={() => prefixLines(editContentRef, editForm.content, (v) => setEditForm((prev) => ({ ...prev, content: v })), "ol")} style={formatToolbarBtn}>1.≡</button>
+                      </div>
+                      <textarea
+                        ref={editContentRef}
+                        style={{ ...inputStyle, minHeight: 100, resize: "vertical" }}
+                        placeholder="Nhập câu trả lời chi tiết..."
+                        value={editForm.content}
+                        onChange={(ev) => handleContentChange(ev, (v) => setEditForm((prev) => ({ ...prev, content: v })))}
+                        onKeyDown={(ev) => handleContentKeyDown(ev, editForm.content, (v) => setEditForm((prev) => ({ ...prev, content: v })))}
+                      />
 
                       <label style={labelStyle}>🎥 Link video hướng dẫn (tuỳ chọn)</label>
                       <input style={inputStyle} placeholder="vd: https://youtube.com/watch?v=..." value={editForm.videoUrl} onChange={(ev) => setEditForm({ ...editForm, videoUrl: ev.target.value })} />
@@ -994,7 +1213,7 @@ function App() {
                         )}
                         <div style={pill}>{getCategoryLabel(e.category)}</div>
                         <div style={miniLabel}>Câu trả lời</div>
-                        <div style={{ fontSize: 13, color: "#4A443B", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{e.content}</div>
+                        <div style={{ fontSize: 13, color: "#4A443B", lineHeight: 1.5 }}>{renderFormattedBlock(e.content, `view-${e.id}`)}</div>
                         {e.videoUrl && (
                           <div style={{ marginTop: 8 }}>
                             <a href={e.videoUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, color: "#12303F", fontWeight: 700, textDecoration: "none" }}>
@@ -1210,6 +1429,7 @@ const inputStyle = { width: "100%", border: "1px solid #DDD7C9", borderRadius: 8
 const primaryButtonStyle = { width: "100%", marginTop: 16, background: "#B5652F", color: "#FFFFFF", border: "none", borderRadius: 8, padding: 10, fontSize: 14, fontWeight: 700, cursor: "pointer" };
 const darkButton = { whiteSpace: "nowrap", background: "#12303F", color: "#FFFFFF", border: "none", borderRadius: 8, padding: "0 14px", height: 38, fontSize: 12.5, fontWeight: 700, cursor: "pointer" };
 const outlineButton = { whiteSpace: "nowrap", background: "#FFFFFF", color: "#12303F", border: "1px solid #DDD7C9", borderRadius: 8, padding: "0 14px", height: 38, fontSize: 12.5, fontWeight: 700, cursor: "pointer" };
+const formatToolbarBtn = { background: "#FFFFFF", color: "#12303F", border: "1px solid #DDD7C9", borderRadius: 6, width: 32, height: 28, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 };
 const bubbleUser = { maxWidth: "80%", background: "#12303F", color: "#F3F1EC", padding: "10px 14px", borderRadius: 14, borderBottomRightRadius: 4, fontSize: 14, lineHeight: 1.55, whiteSpace: "pre-wrap" };
 const bubbleAssistant = { maxWidth: "80%", background: "#F3F1EC", color: "#1E2A32", padding: "10px 14px", borderRadius: 14, borderBottomLeftRadius: 4, fontSize: 14, lineHeight: 1.55, whiteSpace: "pre-wrap" };
 
