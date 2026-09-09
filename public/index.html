@@ -31,7 +31,24 @@ function getCategoryLabel(id) {
   const found = CATEGORIES.find((c) => c.id === id);
   return found ? found.label : id;
 }
-const EMPTY_FORM = { title: "", category: CATEGORIES[0].id, content: "", videoUrl: "", imageUrl: "", imageUrl2: "" };
+const EMPTY_FORM = { title: "", category: CATEGORIES[0].id, content: "", videoUrl: "", images: [], aliasesText: "" };
+
+// Đọc TOÀN BỘ ảnh của 1 mục, gộp cả kiểu dữ liệu cũ (imageUrl/imageUrl2 - tối đa 2 ảnh, các bản
+// trước đây) lẫn kiểu mới (images - mảng không giới hạn số lượng), không trùng lặp.
+function getEntryImages(entry) {
+  if (!entry) return [];
+  const legacy = [entry.imageUrl, entry.imageUrl2].filter(Boolean);
+  const modern = Array.isArray(entry.images) ? entry.images.filter(Boolean) : [];
+  const seen = new Set();
+  const result = [];
+  [...legacy, ...modern].forEach((u) => {
+    if (!seen.has(u)) {
+      seen.add(u);
+      result.push(u);
+    }
+  });
+  return result;
+}
 function resolveCategoryId(raw, defaultId) {
   const clean = String(raw || "").trim().toLowerCase();
   if (!clean) return defaultId;
@@ -93,14 +110,20 @@ function buildKbIndex(entries) {
   const df = new Map();
   const indexed = entries.map((e) => {
     const titleTokens = tokenizeVN(e.title);
+    // "aliases" = các cách hỏi khác cho cùng 1 câu trả lời (VD: "quên mật khẩu" là alias của
+    // "Làm sao để đặt lại mật khẩu?"). Coi ngang hàng với tiêu đề khi tìm kiếm — cùng trọng số.
+    const aliasList = Array.isArray(e.aliases) ? e.aliases : [];
+    const aliasTokenLists = aliasList.map((a) => tokenizeVN(a));
+    const allTitleTokens = [...titleTokens, ...aliasTokenLists.flat()];
     const contentTokens = tokenizeVN(e.content);
-    const all = new Set([...titleTokens, ...contentTokens]);
+    const all = new Set([...allTitleTokens, ...contentTokens]);
     all.forEach((t) => df.set(t, (df.get(t) || 0) + 1));
+    const allBigrams = [...bigramsOfTokens(titleTokens), ...aliasTokenLists.flatMap((toks) => bigramsOfTokens(toks))];
     return {
       entry: e,
-      titleTokenSet: new Set(titleTokens),
+      titleTokenSet: new Set(allTitleTokens),
       contentTokenSet: new Set(contentTokens),
-      titleBigramSet: new Set(bigramsOfTokens(titleTokens)),
+      titleBigramSet: new Set(allBigrams),
     };
   });
   return { df, indexed, N: entries.length };
@@ -164,17 +187,17 @@ function App() {
   const [filterCategory, setFilterCategory] = useState("ALL");
 
   const [form, setForm] = useState({ ...EMPTY_FORM });
+  const [newImageUrlDraft, setNewImageUrlDraft] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({ ...EMPTY_FORM });
+  const [newImageUrlDraftEdit, setNewImageUrlDraftEdit] = useState("");
   const editImageInputRef = useRef(null);
-  const editImageInputRef2 = useRef(null);
   const [entryMode, setEntryMode] = useState("single");
   const [bulkText, setBulkText] = useState("");
   const [bulkCategory, setBulkCategory] = useState(CATEGORIES[0].id);
   const [importResult, setImportResult] = useState(null);
   const fileInputRef = useRef(null);
   const imageInputRef = useRef(null);
-  const imageInputRef2 = useRef(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [uploadError, setUploadError] = useState("");
 
@@ -235,9 +258,11 @@ function App() {
 
   async function addEntry() {
     if (!form.title.trim() || !form.content.trim()) return;
-    const entry = { id: String(Date.now()), ...form };
+    const { aliasesText, ...rest } = form;
+    const aliases = aliasesText.split("\n").map((s) => s.trim()).filter(Boolean);
+    const entry = { id: String(Date.now()), ...rest, aliases };
     const ok = await saveKbEntries([entry, ...kbEntries]);
-    if (ok) setForm({ ...EMPTY_FORM });
+    if (ok) { setForm({ ...EMPTY_FORM }); setNewImageUrlDraft(""); }
   }
 
   function startEdit(entry) {
@@ -246,22 +271,30 @@ function App() {
       category: entry.category || CATEGORIES[0].id,
       content: entry.content || "",
       videoUrl: entry.videoUrl || "",
-      imageUrl: entry.imageUrl || "",
-      imageUrl2: entry.imageUrl2 || "",
+      images: getEntryImages(entry),
+      aliasesText: Array.isArray(entry.aliases) ? entry.aliases.join("\n") : "",
     });
     setEditingId(entry.id);
+    setNewImageUrlDraftEdit("");
     setUploadError("");
   }
 
   function cancelEdit() {
     setEditingId(null);
     setEditForm({ ...EMPTY_FORM });
+    setNewImageUrlDraftEdit("");
     setUploadError("");
   }
 
   async function saveEditEntry() {
     if (!editForm.title.trim() || !editForm.content.trim() || !editingId) return;
-    const nextEntries = kbEntries.map((e) => (e.id === editingId ? { ...e, ...editForm } : e));
+    const { aliasesText, ...rest } = editForm;
+    const aliases = aliasesText.split("\n").map((s) => s.trim()).filter(Boolean);
+    // Ghi đè hẳn sang định dạng "images" (mảng) mới, bỏ imageUrl/imageUrl2 cũ nếu có
+    // (getEntryImages đã gộp sẵn dữ liệu cũ vào form lúc mở sửa, nên không mất ảnh).
+    const nextEntries = kbEntries.map((e) =>
+      e.id === editingId ? { ...e, ...rest, aliases, imageUrl: undefined, imageUrl2: undefined } : e
+    );
     const ok = await saveKbEntries(nextEntries);
     if (ok) cancelEdit();
   }
@@ -269,6 +302,10 @@ function App() {
   async function removeEntry(id) {
     if (editingId === id) cancelEdit();
     await saveKbEntries(kbEntries.filter((e) => e.id !== id));
+  }
+
+  function splitMultiValue(raw) {
+    return String(raw || "").split(/[\n|]/).map((s) => s.trim()).filter(Boolean);
   }
 
   function parseBulkImport(text, defaultCategoryId) {
@@ -281,28 +318,28 @@ function App() {
         const cols = line.split("\t").map((c) => normalizeLineBreaks(c).trim());
         if (/^(câu hỏi|question)$/i.test(cols[0])) return;
         if (cols.length >= 3 && cols[0] && cols[2]) {
-          entries.push({ title: cols[0], category: resolveCategoryId(cols[1], defaultCategoryId), content: cols[2], videoUrl: cols[3] || "", imageUrl: cols[4] || "", imageUrl2: cols[5] || "" });
+          entries.push({ title: cols[0], category: resolveCategoryId(cols[1], defaultCategoryId), content: cols[2], videoUrl: cols[3] || "", images: splitMultiValue(cols[4]), aliases: splitMultiValue(cols[5]) });
         } else if (cols.length === 2 && cols[0] && cols[1]) {
-          entries.push({ title: cols[0], category: defaultCategoryId, content: cols[1], videoUrl: "", imageUrl: "", imageUrl2: "" });
+          entries.push({ title: cols[0], category: defaultCategoryId, content: cols[1], videoUrl: "", images: [], aliases: [] });
         }
       });
       return entries;
     }
     const blocks = normalizeLineBreaks(text).split(/\n\s*\n/);
     blocks.forEach((block) => {
-      const qMatch = block.match(/câu hỏi\s*:\s*([\s\S]*?)(?:\n(?:danh mục|câu trả lời|video|hình ảnh)\s*:|$)/i);
-      const cMatch = block.match(/danh mục\s*:\s*([\s\S]*?)(?:\n(?:câu trả lời|video|hình ảnh)\s*:|$)/i);
-      const aMatch = block.match(/câu trả lời\s*:\s*([\s\S]*?)(?:\n(?:video|hình ảnh)\s*:|$)/i);
-      const vMatch = block.match(/video\s*:\s*([\s\S]*?)(?:\nhình ảnh\s*:|$)/i);
-      const iMatch = block.match(/hình ảnh\s*:\s*([\s\S]*?)(?:\nhình ảnh\s*2\s*:|$)/i);
-      const i2Match = block.match(/hình ảnh\s*2\s*:\s*([\s\S]*)/i);
+      const qMatch = block.match(/câu hỏi\s*:\s*([\s\S]*?)(?:\n(?:danh mục|câu trả lời|video|hình ảnh|cách hỏi khác)\s*:|$)/i);
+      const cMatch = block.match(/danh mục\s*:\s*([\s\S]*?)(?:\n(?:câu trả lời|video|hình ảnh|cách hỏi khác)\s*:|$)/i);
+      const aMatch = block.match(/câu trả lời\s*:\s*([\s\S]*?)(?:\n(?:video|hình ảnh|cách hỏi khác)\s*:|$)/i);
+      const vMatch = block.match(/video\s*:\s*([\s\S]*?)(?:\n(?:hình ảnh|cách hỏi khác)\s*:|$)/i);
+      const iMatch = block.match(/hình ảnh\s*:\s*([\s\S]*?)(?:\ncách hỏi khác\s*:|$)/i);
+      const aliasMatch = block.match(/cách hỏi khác\s*:\s*([\s\S]*)/i);
       const question = qMatch ? qMatch[1].trim() : "";
       const answer = aMatch ? aMatch[1].trim() : "";
       const category = cMatch ? resolveCategoryId(cMatch[1], defaultCategoryId) : defaultCategoryId;
       const videoUrl = vMatch ? vMatch[1].trim() : "";
-      const imageUrl = iMatch ? iMatch[1].trim() : "";
-      const imageUrl2 = i2Match ? i2Match[1].trim() : "";
-      if (question && answer) entries.push({ title: question, category, content: answer, videoUrl, imageUrl, imageUrl2 });
+      const images = iMatch ? splitMultiValue(iMatch[1]) : [];
+      const aliases = aliasMatch ? splitMultiValue(aliasMatch[1]) : [];
+      if (question && answer) entries.push({ title: question, category, content: answer, videoUrl, images, aliases });
     });
     return entries;
   }
@@ -342,11 +379,11 @@ function App() {
         const rawCategory = normalizeLineBreaks(row[1]).trim();
         const answer = normalizeLineBreaks(row[2]).trim();
         const videoUrl = normalizeLineBreaks(row[3]).trim();
-        const imageUrl = normalizeLineBreaks(row[4]).trim();
-        const imageUrl2 = normalizeLineBreaks(row[5]).trim();
+        const images = splitMultiValue(normalizeLineBreaks(row[4]));
+        const aliases = splitMultiValue(normalizeLineBreaks(row[5]));
         if (!question || !answer) return;
         if (question === EXAMPLE_QUESTION) return;
-        parsed.push({ title: question, category: resolveCategoryId(rawCategory, CATEGORIES[CATEGORIES.length - 1].id), content: answer, videoUrl, imageUrl, imageUrl2 });
+        parsed.push({ title: question, category: resolveCategoryId(rawCategory, CATEGORIES[CATEGORIES.length - 1].id), content: answer, videoUrl, images, aliases });
       });
       await importEntries(parsed, "excel");
     } catch (err) {
@@ -357,26 +394,28 @@ function App() {
   }
 
   function downloadTemplate() {
-    const headers = ["Câu hỏi", "Danh mục", "Câu trả lời", "Link Video", "Link ảnh 1", "Link ảnh 2"];
+    const headers = ["Câu hỏi", "Danh mục", "Câu trả lời", "Link Video", "Link ảnh (nhiều ảnh cách nhau bởi |)", "Cách hỏi khác (nhiều cách cách nhau bởi |)"];
     const exampleRow = [
       EXAMPLE_QUESTION,
       "HD",
       "Vào trang đăng nhập > bấm 'Quên mật khẩu' > nhập email đã đăng ký > làm theo hướng dẫn trong email.",
       "https://youtube.com/watch?v=vidu",
       "",
-      "",
+      "Tôi quên mật khẩu | Không đăng nhập được",
     ];
     const ws = XLSX.utils.aoa_to_sheet([headers, exampleRow]);
-    ws["!cols"] = [{ wch: 45 }, { wch: 14 }, { wch: 70 }, { wch: 38 }, { wch: 38 }, { wch: 38 }];
+    ws["!cols"] = [{ wch: 45 }, { wch: 14 }, { wch: 70 }, { wch: 38 }, { wch: 45 }, { wch: 45 }];
 
     const wsNote = XLSX.utils.aoa_to_sheet([
       ["Mã danh mục", "Tên danh mục"],
       ...CATEGORIES.map((c) => [c.id, c.label]),
       [],
       ["Ghi chú:"],
-      ["- Giữ nguyên tên sheet \"Dữ liệu\" và thứ tự 6 cột: Câu hỏi, Danh mục, Câu trả lời, Link Video, Link ảnh 1, Link ảnh 2."],
+      ["- Giữ nguyên tên sheet \"Dữ liệu\" và thứ tự 6 cột: Câu hỏi, Danh mục, Câu trả lời, Link Video, Link ảnh, Cách hỏi khác."],
       ["- Cột Danh mục điền đúng 1 trong các mã ở bảng trên (VD: HD)."],
-      ["- Cột Link Video, Link ảnh 1, Link ảnh 2 có thể để trống nếu không có — tối đa 2 ảnh cho mỗi câu trả lời."],
+      ["- Cột Link Video, Link ảnh, Cách hỏi khác có thể để trống nếu không có."],
+      ["- Cột \"Link ảnh\": không giới hạn số lượng, nhiều ảnh cách nhau bởi dấu | (hoặc xuống dòng Alt+Enter trong 1 ô Excel)."],
+      ["- Cột \"Cách hỏi khác\": nhiều cách hỏi cách nhau bởi dấu | (hoặc xuống dòng Alt+Enter trong 1 ô Excel)."],
       ["- Dòng ví dụ đầu tiên trong sheet \"Dữ liệu\" sẽ tự động bị bỏ qua khi nhập, không cần xoá thủ công."],
     ]);
     wsNote["!cols"] = [{ wch: 42 }, { wch: 30 }];
@@ -387,9 +426,7 @@ function App() {
     XLSX.writeFile(wb, "mau_nhap_du_lieu_chatbot.xlsx");
   }
 
-  async function handleImageUpload(event, field, setTarget) {
-    const targetField = field || "imageUrl";
-    const targetSetter = setTarget || setForm;
+  async function handleImageUpload(event, onSuccess) {
     const file = event.target.files && event.target.files[0];
     if (!file) return;
     setUploadError("");
@@ -408,7 +445,7 @@ function App() {
       } else if (!r.ok || !data.ok) {
         setUploadError(data.error || "Tải ảnh lên thất bại.");
       } else {
-        targetSetter((prev) => ({ ...prev, [targetField]: data.url }));
+        onSuccess(data.url);
       }
     } catch (e) {
       setUploadError("Lỗi kết nối khi tải ảnh lên.");
@@ -416,6 +453,16 @@ function App() {
       setUploadingImage(false);
       event.target.value = "";
     }
+  }
+
+  function addImageUrl(setTarget, url) {
+    const trimmed = (url || "").trim();
+    if (!trimmed) return;
+    setTarget((prev) => ({ ...prev, images: [...(prev.images || []), trimmed] }));
+  }
+
+  function removeImageAt(setTarget, index) {
+    setTarget((prev) => ({ ...prev, images: prev.images.filter((_, i) => i !== index) }));
   }
 
   async function saveSettings() {
@@ -451,7 +498,7 @@ function App() {
       // vào file sao lưu — ảnh dán link ngoài (http/https từ nơi khác) không cần nhúng vì vẫn còn nguyên ở nơi đó.
       const localImagePaths = new Set();
       kbEntries.forEach((e) => {
-        [e.imageUrl, e.imageUrl2].forEach((u) => {
+        getEntryImages(e).forEach((u) => {
           if (u && u.startsWith("/uploads/")) localImagePaths.add(u);
         });
       });
@@ -596,8 +643,7 @@ function App() {
           text: matched.content,
           matchedTitle: matched.title,
           videoUrl: matched.videoUrl || "",
-          imageUrl: matched.imageUrl || "",
-          imageUrl2: matched.imageUrl2 || "",
+          images: getEntryImages(matched),
           question,
         },
       ]);
@@ -628,8 +674,7 @@ function App() {
               text: entry.content,
               matchedTitle: entry.title,
               videoUrl: entry.videoUrl || "",
-              imageUrl: entry.imageUrl || "",
-              imageUrl2: entry.imageUrl2 || "",
+              images: getEntryImages(entry),
               question: m.question,
             }
           : m
@@ -674,7 +719,11 @@ function App() {
   const filteredEntries = kbEntries.filter((e) => {
     const matchesCategory = filterCategory === "ALL" || e.category === filterCategory;
     const q = searchQuery.trim().toLowerCase();
-    const matchesQuery = !q || e.title.toLowerCase().includes(q) || e.content.toLowerCase().includes(q);
+    const matchesQuery =
+      !q ||
+      e.title.toLowerCase().includes(q) ||
+      e.content.toLowerCase().includes(q) ||
+      (Array.isArray(e.aliases) && e.aliases.some((a) => a.toLowerCase().includes(q)));
     return matchesCategory && matchesQuery;
   });
 
@@ -717,6 +766,10 @@ function App() {
                   <div style={sectionTitle}>📄 Thêm câu hỏi &amp; câu trả lời</div>
                   <label style={labelStyle}>Câu hỏi</label>
                   <input style={inputStyle} placeholder="VD: Làm sao để tạo phiếu đánh giá KPI?" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
+
+                  <label style={labelStyle}>🔀 Cách hỏi khác (mỗi dòng 1 cách, tuỳ chọn)</label>
+                  <div style={{ fontSize: 11.5, color: "#8A8272", marginBottom: 4 }}>Giúp chatbot nhận ra câu hỏi dù người dùng gõ khác đi. VD: "Tôi quên mật khẩu", "Không đăng nhập được".</div>
+                  <textarea style={{ ...inputStyle, minHeight: 70, resize: "vertical" }} placeholder={"Tôi quên mật khẩu\nKhông đăng nhập được"} value={form.aliasesText} onChange={(e) => setForm({ ...form, aliasesText: e.target.value })} />
                   <label style={labelStyle}>Danh mục</label>
                   <select style={inputStyle} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
                     {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label} ({c.id})</option>)}
@@ -727,52 +780,36 @@ function App() {
                   <label style={labelStyle}>🎥 Link video hướng dẫn (tuỳ chọn)</label>
                   <input style={inputStyle} placeholder="vd: https://youtube.com/watch?v=..." value={form.videoUrl} onChange={(e) => setForm({ ...form, videoUrl: e.target.value })} />
 
-                  <label style={labelStyle}>🖼️ Hình ảnh minh hoạ (tối đa 2 ảnh, tuỳ chọn)</label>
+                  <label style={labelStyle}>🖼️ Hình ảnh minh hoạ (không giới hạn số lượng, tuỳ chọn)</label>
 
-                  <div style={{ fontSize: 11.5, color: "#8A8272", marginBottom: 4 }}>Ảnh 1</div>
-                  <div style={{ display: "flex", gap: 8, marginBottom: 4 }}>
-                    <input style={{ ...inputStyle, marginBottom: 0, flex: 1 }} placeholder="Dán link ảnh, hoặc bấm nút bên phải để tải ảnh từ máy" value={form.imageUrl} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} />
-                    <input ref={imageInputRef} type="file" accept="image/*" onChange={(e) => handleImageUpload(e, "imageUrl")} style={{ display: "none" }} />
-                    <button
-                      type="button"
-                      onClick={() => imageInputRef.current && imageInputRef.current.click()}
-                      disabled={uploadingImage}
-                      style={{ ...darkButton, flex: "0 0 auto" }}
-                    >
-                      {uploadingImage ? "⏳ Đang tải..." : "⬆️ Tải ảnh lên"}
-                    </button>
-                  </div>
-                  {form.imageUrl && (
-                    <div style={{ position: "relative", display: "inline-block", marginTop: 2, marginBottom: 10 }}>
-                      <img src={form.imageUrl} alt="Xem trước ảnh 1" onClick={() => setLightboxSrc(form.imageUrl)} style={{ maxWidth: "100%", maxHeight: 160, borderRadius: 8, border: "1px solid #DDD7C9", display: "block", cursor: "zoom-in" }} onError={(e) => { e.target.style.display = "none"; }} />
-                      <button type="button" onClick={() => setForm({ ...form, imageUrl: "" })} style={{ position: "absolute", top: 4, right: 4, background: "rgba(18,48,63,0.8)", color: "#fff", border: "none", borderRadius: 6, padding: "2px 8px", fontSize: 11, cursor: "pointer" }}>
-                        ✕ Xoá
-                      </button>
+                  {form.images.length > 0 && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
+                      {form.images.map((url, idx) => (
+                        <div key={idx} style={{ position: "relative", display: "inline-block" }}>
+                          <img src={url} alt={`Ảnh ${idx + 1}`} onClick={() => setLightboxSrc(url)} style={{ width: 90, height: 90, objectFit: "cover", borderRadius: 8, border: "1px solid #DDD7C9", cursor: "zoom-in" }} onError={(e) => { e.target.style.opacity = 0.25; }} />
+                          <button type="button" onClick={() => removeImageAt(setForm, idx)} style={{ position: "absolute", top: 2, right: 2, background: "rgba(18,48,63,0.8)", color: "#fff", border: "none", borderRadius: 6, padding: "1px 6px", fontSize: 11, cursor: "pointer" }}>
+                            ✕
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   )}
-
-                  <div style={{ fontSize: 11.5, color: "#8A8272", marginBottom: 4 }}>Ảnh 2</div>
                   <div style={{ display: "flex", gap: 8, marginBottom: 4 }}>
-                    <input style={{ ...inputStyle, marginBottom: 0, flex: 1 }} placeholder="Dán link ảnh, hoặc bấm nút bên phải để tải ảnh từ máy" value={form.imageUrl2} onChange={(e) => setForm({ ...form, imageUrl2: e.target.value })} />
-                    <input ref={imageInputRef2} type="file" accept="image/*" onChange={(e) => handleImageUpload(e, "imageUrl2")} style={{ display: "none" }} />
-                    <button
-                      type="button"
-                      onClick={() => imageInputRef2.current && imageInputRef2.current.click()}
-                      disabled={uploadingImage}
-                      style={{ ...darkButton, flex: "0 0 auto" }}
-                    >
+                    <input
+                      style={{ ...inputStyle, marginBottom: 0, flex: 1 }}
+                      placeholder="Dán link ảnh rồi bấm '+ Thêm', hoặc bấm 'Tải ảnh lên' để chọn file từ máy"
+                      value={newImageUrlDraft}
+                      onChange={(e) => setNewImageUrlDraft(e.target.value)}
+                    />
+                    <button type="button" onClick={() => { addImageUrl(setForm, newImageUrlDraft); setNewImageUrlDraft(""); }} style={{ ...outlineButton, height: "auto", padding: "0 14px", flex: "0 0 auto" }}>
+                      + Thêm
+                    </button>
+                    <input ref={imageInputRef} type="file" accept="image/*" onChange={(e) => handleImageUpload(e, (url) => setForm((prev) => ({ ...prev, images: [...prev.images, url] })))} style={{ display: "none" }} />
+                    <button type="button" onClick={() => imageInputRef.current && imageInputRef.current.click()} disabled={uploadingImage} style={{ ...darkButton, flex: "0 0 auto" }}>
                       {uploadingImage ? "⏳ Đang tải..." : "⬆️ Tải ảnh lên"}
                     </button>
                   </div>
                   {uploadError && <div style={{ fontSize: 12, color: "#B3261E", marginBottom: 6 }}>{uploadError}</div>}
-                  {form.imageUrl2 && (
-                    <div style={{ position: "relative", display: "inline-block", marginTop: 2 }}>
-                      <img src={form.imageUrl2} alt="Xem trước ảnh 2" onClick={() => setLightboxSrc(form.imageUrl2)} style={{ maxWidth: "100%", maxHeight: 160, borderRadius: 8, border: "1px solid #DDD7C9", display: "block", cursor: "zoom-in" }} onError={(e) => { e.target.style.display = "none"; }} />
-                      <button type="button" onClick={() => setForm({ ...form, imageUrl2: "" })} style={{ position: "absolute", top: 4, right: 4, background: "rgba(18,48,63,0.8)", color: "#fff", border: "none", borderRadius: 6, padding: "2px 8px", fontSize: 11, cursor: "pointer" }}>
-                        ✕ Xoá
-                      </button>
-                    </div>
-                  )}
 
                   <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
                     <button onClick={addEntry} disabled={uploadingImage} style={{ ...primaryButtonStyle, width: "auto", flex: 1, marginTop: 0, opacity: uploadingImage ? 0.6 : 1 }}>
@@ -784,7 +821,7 @@ function App() {
                 <>
                   <div style={sectionTitle}>📋 Nhập hàng loạt Câu hỏi - Câu trả lời</div>
                   <div style={{ fontSize: 12.5, color: "#6B6255", lineHeight: 1.6, marginBottom: 10 }}>
-                    Dán từ Excel: mỗi dòng 1 cặp, cách nhau bởi Tab — <strong>Câu hỏi</strong> [Tab] <strong>Mã danh mục</strong> [Tab] <strong>Câu trả lời</strong> [Tab] <strong>Link video</strong> [Tab] <strong>Link ảnh 1</strong> [Tab] <strong>Link ảnh 2</strong> (3 cột cuối tuỳ chọn, có thể bỏ trống). Hoặc dán khối văn bản dạng "Câu hỏi: ... / Danh mục: ... / Câu trả lời: ... / Video: ... / Hình ảnh: ... / Hình ảnh 2: ...", mỗi mục cách nhau 1 dòng trống.
+                    Dán từ Excel: mỗi dòng 1 cặp, cách nhau bởi Tab — <strong>Câu hỏi</strong> [Tab] <strong>Mã danh mục</strong> [Tab] <strong>Câu trả lời</strong> [Tab] <strong>Link video</strong> [Tab] <strong>Link ảnh</strong> [Tab] <strong>Cách hỏi khác</strong> (3 cột cuối tuỳ chọn, có thể bỏ trống; nhiều ảnh/cách hỏi cách nhau bởi dấu |). Hoặc dán khối văn bản dạng "Câu hỏi: ... / Danh mục: ... / Câu trả lời: ... / Video: ... / Hình ảnh: ... / Cách hỏi khác: ...", mỗi mục cách nhau 1 dòng trống.
                   </div>
                   <label style={labelStyle}>Danh mục mặc định</label>
                   <select style={inputStyle} value={bulkCategory} onChange={(e) => setBulkCategory(e.target.value)}>
@@ -842,6 +879,10 @@ function App() {
                       <div style={{ fontSize: 12, color: "#B5652F", fontWeight: 700, marginBottom: 8 }}>✏️ Đang chỉnh sửa</div>
                       <label style={labelStyle}>Câu hỏi</label>
                       <input style={inputStyle} placeholder="VD: Làm sao để tạo phiếu đánh giá KPI?" value={editForm.title} onChange={(ev) => setEditForm({ ...editForm, title: ev.target.value })} />
+
+                      <label style={labelStyle}>🔀 Cách hỏi khác (mỗi dòng 1 cách, tuỳ chọn)</label>
+                      <div style={{ fontSize: 11.5, color: "#8A8272", marginBottom: 4 }}>Giúp chatbot nhận ra câu hỏi dù người dùng gõ khác đi.</div>
+                      <textarea style={{ ...inputStyle, minHeight: 70, resize: "vertical" }} placeholder={"Tôi quên mật khẩu\nKhông đăng nhập được"} value={editForm.aliasesText} onChange={(ev) => setEditForm({ ...editForm, aliasesText: ev.target.value })} />
                       <label style={labelStyle}>Danh mục</label>
                       <select style={inputStyle} value={editForm.category} onChange={(ev) => setEditForm({ ...editForm, category: ev.target.value })}>
                         {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label} ({c.id})</option>)}
@@ -852,42 +893,36 @@ function App() {
                       <label style={labelStyle}>🎥 Link video hướng dẫn (tuỳ chọn)</label>
                       <input style={inputStyle} placeholder="vd: https://youtube.com/watch?v=..." value={editForm.videoUrl} onChange={(ev) => setEditForm({ ...editForm, videoUrl: ev.target.value })} />
 
-                      <label style={labelStyle}>🖼️ Hình ảnh minh hoạ (tối đa 2 ảnh, tuỳ chọn)</label>
+                      <label style={labelStyle}>🖼️ Hình ảnh minh hoạ (không giới hạn số lượng, tuỳ chọn)</label>
 
-                      <div style={{ fontSize: 11.5, color: "#8A8272", marginBottom: 4 }}>Ảnh 1</div>
+                      {editForm.images.length > 0 && (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
+                          {editForm.images.map((url, idx) => (
+                            <div key={idx} style={{ position: "relative", display: "inline-block" }}>
+                              <img src={url} alt={`Ảnh ${idx + 1}`} onClick={() => setLightboxSrc(url)} style={{ width: 90, height: 90, objectFit: "cover", borderRadius: 8, border: "1px solid #DDD7C9", cursor: "zoom-in" }} onError={(e) => { e.target.style.opacity = 0.25; }} />
+                              <button type="button" onClick={() => removeImageAt(setEditForm, idx)} style={{ position: "absolute", top: 2, right: 2, background: "rgba(18,48,63,0.8)", color: "#fff", border: "none", borderRadius: 6, padding: "1px 6px", fontSize: 11, cursor: "pointer" }}>
+                                ✕
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       <div style={{ display: "flex", gap: 8, marginBottom: 4 }}>
-                        <input style={{ ...inputStyle, marginBottom: 0, flex: 1 }} placeholder="Dán link ảnh, hoặc bấm nút bên phải để tải ảnh từ máy" value={editForm.imageUrl} onChange={(ev) => setEditForm({ ...editForm, imageUrl: ev.target.value })} />
-                        <input ref={editImageInputRef} type="file" accept="image/*" onChange={(ev) => handleImageUpload(ev, "imageUrl", setEditForm)} style={{ display: "none" }} />
+                        <input
+                          style={{ ...inputStyle, marginBottom: 0, flex: 1 }}
+                          placeholder="Dán link ảnh rồi bấm '+ Thêm', hoặc bấm 'Tải ảnh lên' để chọn file từ máy"
+                          value={newImageUrlDraftEdit}
+                          onChange={(ev) => setNewImageUrlDraftEdit(ev.target.value)}
+                        />
+                        <button type="button" onClick={() => { addImageUrl(setEditForm, newImageUrlDraftEdit); setNewImageUrlDraftEdit(""); }} style={{ ...outlineButton, height: "auto", padding: "0 14px", flex: "0 0 auto" }}>
+                          + Thêm
+                        </button>
+                        <input ref={editImageInputRef} type="file" accept="image/*" onChange={(ev) => handleImageUpload(ev, (url) => setEditForm((prev) => ({ ...prev, images: [...prev.images, url] })))} style={{ display: "none" }} />
                         <button type="button" onClick={() => editImageInputRef.current && editImageInputRef.current.click()} disabled={uploadingImage} style={{ ...darkButton, flex: "0 0 auto" }}>
                           {uploadingImage ? "⏳ Đang tải..." : "⬆️ Tải ảnh lên"}
                         </button>
                       </div>
-                      {editForm.imageUrl && (
-                        <div style={{ position: "relative", display: "inline-block", marginTop: 2, marginBottom: 10 }}>
-                          <img src={editForm.imageUrl} alt="Xem trước ảnh 1" onClick={() => setLightboxSrc(editForm.imageUrl)} style={{ maxWidth: "100%", maxHeight: 160, borderRadius: 8, border: "1px solid #DDD7C9", display: "block", cursor: "zoom-in" }} onError={(ev) => { ev.target.style.display = "none"; }} />
-                          <button type="button" onClick={() => setEditForm({ ...editForm, imageUrl: "" })} style={{ position: "absolute", top: 4, right: 4, background: "rgba(18,48,63,0.8)", color: "#fff", border: "none", borderRadius: 6, padding: "2px 8px", fontSize: 11, cursor: "pointer" }}>
-                            ✕ Xoá
-                          </button>
-                        </div>
-                      )}
-
-                      <div style={{ fontSize: 11.5, color: "#8A8272", marginBottom: 4 }}>Ảnh 2</div>
-                      <div style={{ display: "flex", gap: 8, marginBottom: 4 }}>
-                        <input style={{ ...inputStyle, marginBottom: 0, flex: 1 }} placeholder="Dán link ảnh, hoặc bấm nút bên phải để tải ảnh từ máy" value={editForm.imageUrl2} onChange={(ev) => setEditForm({ ...editForm, imageUrl2: ev.target.value })} />
-                        <input ref={editImageInputRef2} type="file" accept="image/*" onChange={(ev) => handleImageUpload(ev, "imageUrl2", setEditForm)} style={{ display: "none" }} />
-                        <button type="button" onClick={() => editImageInputRef2.current && editImageInputRef2.current.click()} disabled={uploadingImage} style={{ ...darkButton, flex: "0 0 auto" }}>
-                          {uploadingImage ? "⏳ Đang tải..." : "⬆️ Tải ảnh lên"}
-                        </button>
-                      </div>
                       {uploadError && <div style={{ fontSize: 12, color: "#B3261E", marginBottom: 6 }}>{uploadError}</div>}
-                      {editForm.imageUrl2 && (
-                        <div style={{ position: "relative", display: "inline-block", marginTop: 2 }}>
-                          <img src={editForm.imageUrl2} alt="Xem trước ảnh 2" onClick={() => setLightboxSrc(editForm.imageUrl2)} style={{ maxWidth: "100%", maxHeight: 160, borderRadius: 8, border: "1px solid #DDD7C9", display: "block", cursor: "zoom-in" }} onError={(ev) => { ev.target.style.display = "none"; }} />
-                          <button type="button" onClick={() => setEditForm({ ...editForm, imageUrl2: "" })} style={{ position: "absolute", top: 4, right: 4, background: "rgba(18,48,63,0.8)", color: "#fff", border: "none", borderRadius: 6, padding: "2px 8px", fontSize: 11, cursor: "pointer" }}>
-                            ✕ Xoá
-                          </button>
-                        </div>
-                      )}
 
                       <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
                         <button onClick={saveEditEntry} disabled={uploadingImage} style={{ ...primaryButtonStyle, width: "auto", flex: 1, marginTop: 0, opacity: uploadingImage ? 0.6 : 1 }}>
@@ -901,6 +936,11 @@ function App() {
                       <div style={{ flex: 1 }}>
                         <div style={miniLabel}>Câu hỏi</div>
                         <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{e.title}</div>
+                        {Array.isArray(e.aliases) && e.aliases.length > 0 && (
+                          <div style={{ fontSize: 11.5, color: "#8A8272", marginBottom: 4 }}>
+                            🔀 Cách hỏi khác: {e.aliases.join(" · ")}
+                          </div>
+                        )}
                         <div style={pill}>{getCategoryLabel(e.category)}</div>
                         <div style={miniLabel}>Câu trả lời</div>
                         <div style={{ fontSize: 13, color: "#4A443B", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{e.content}</div>
@@ -911,16 +951,13 @@ function App() {
                             </a>
                           </div>
                         )}
-                        {(e.imageUrl || e.imageUrl2) && (
+                        {getEntryImages(e).length > 0 && (
                           <div style={{ marginTop: 8 }}>
-                            <div style={miniLabel}>🖼️ Hình ảnh minh hoạ</div>
+                            <div style={miniLabel}>🖼️ Hình ảnh minh hoạ ({getEntryImages(e).length})</div>
                             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
-                              {e.imageUrl && (
-                                <img src={e.imageUrl} alt={e.title} onClick={() => setLightboxSrc(e.imageUrl)} style={{ maxWidth: 220, maxHeight: 140, borderRadius: 8, border: "1px solid #DDD7C9", cursor: "zoom-in" }} onError={(ev) => { ev.target.style.display = "none"; }} />
-                              )}
-                              {e.imageUrl2 && (
-                                <img src={e.imageUrl2} alt={e.title} onClick={() => setLightboxSrc(e.imageUrl2)} style={{ maxWidth: 220, maxHeight: 140, borderRadius: 8, border: "1px solid #DDD7C9", cursor: "zoom-in" }} onError={(ev) => { ev.target.style.display = "none"; }} />
-                              )}
+                              {getEntryImages(e).map((url, idx) => (
+                                <img key={idx} src={url} alt={e.title} onClick={() => setLightboxSrc(url)} style={{ maxWidth: 220, maxHeight: 140, borderRadius: 8, border: "1px solid #DDD7C9", cursor: "zoom-in" }} onError={(ev) => { ev.target.style.display = "none"; }} />
+                              ))}
                             </div>
                           </div>
                         )}
@@ -960,12 +997,9 @@ function App() {
                         <a href={m.videoUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, color: "inherit", fontWeight: 700 }}>🎥 Video hướng dẫn ↗</a>
                       </div>
                     )}
-                    {m.role === "assistant" && m.source === "kb" && m.imageUrl && (
-                      <img src={m.imageUrl} alt={m.matchedTitle || "Hình minh hoạ"} onClick={() => setLightboxSrc(m.imageUrl)} style={{ maxWidth: "100%", maxHeight: 200, borderRadius: 8, display: "block", marginTop: 8, cursor: "zoom-in" }} onError={(e) => { e.target.style.display = "none"; }} />
-                    )}
-                    {m.role === "assistant" && m.source === "kb" && m.imageUrl2 && (
-                      <img src={m.imageUrl2} alt={m.matchedTitle || "Hình minh hoạ"} onClick={() => setLightboxSrc(m.imageUrl2)} style={{ maxWidth: "100%", maxHeight: 200, borderRadius: 8, display: "block", marginTop: 8, cursor: "zoom-in" }} onError={(e) => { e.target.style.display = "none"; }} />
-                    )}
+                    {m.role === "assistant" && m.source === "kb" && Array.isArray(m.images) && m.images.map((url, idx) => (
+                      <img key={idx} src={url} alt={m.matchedTitle || "Hình minh hoạ"} onClick={() => setLightboxSrc(url)} style={{ maxWidth: "100%", maxHeight: 200, borderRadius: 8, display: "block", marginTop: 8, cursor: "zoom-in" }} onError={(e) => { e.target.style.display = "none"; }} />
+                    ))}
                   </div>
 
                   {m.role === "assistant" && m.source === "ambiguous" && (
