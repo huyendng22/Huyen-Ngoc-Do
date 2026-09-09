@@ -199,6 +199,7 @@ function App() {
   const fileInputRef = useRef(null);
   const imageInputRef = useRef(null);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [suggestingAliases, setSuggestingAliases] = useState(false);
   const [uploadError, setUploadError] = useState("");
 
   const [adminToken, setAdminToken] = useState(localStorage.getItem("adminToken") || "");
@@ -463,6 +464,40 @@ function App() {
 
   function removeImageAt(setTarget, index) {
     setTarget((prev) => ({ ...prev, images: prev.images.filter((_, i) => i !== index) }));
+  }
+
+  async function suggestAliases(titleText, contentText, setTarget) {
+    if (!titleText.trim() || !contentText.trim()) {
+      setUploadError("Cần điền Câu hỏi và Câu trả lời trước khi nhờ AI gợi ý.");
+      return;
+    }
+    setUploadError("");
+    setSuggestingAliases(true);
+    try {
+      const r = await fetch("/api/suggest-aliases", {
+        method: "POST",
+        headers: authHeaders(adminToken),
+        body: JSON.stringify({ title: titleText, content: contentText }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (r.status === 401) {
+        setUploadError("Sai mã quản trị — nhập mã ở tab Cài đặt trước khi dùng AI gợi ý.");
+      } else if (!r.ok || !data.ok) {
+        setUploadError(data.error || "AI không tạo được gợi ý, thử lại sau.");
+      } else {
+        setTarget((prev) => {
+          const existing = prev.aliasesText.split("\n").map((s) => s.trim()).filter(Boolean);
+          (data.aliases || []).forEach((a) => {
+            if (!existing.includes(a)) existing.push(a);
+          });
+          return { ...prev, aliasesText: existing.join("\n") };
+        });
+      }
+    } catch (e) {
+      setUploadError("Lỗi kết nối khi gọi AI gợi ý.");
+    } finally {
+      setSuggestingAliases(false);
+    }
   }
 
   async function saveSettings() {
@@ -770,6 +805,14 @@ function App() {
                   <label style={labelStyle}>🔀 Cách hỏi khác (mỗi dòng 1 cách, tuỳ chọn)</label>
                   <div style={{ fontSize: 11.5, color: "#8A8272", marginBottom: 4 }}>Giúp chatbot nhận ra câu hỏi dù người dùng gõ khác đi. VD: "Tôi quên mật khẩu", "Không đăng nhập được".</div>
                   <textarea style={{ ...inputStyle, minHeight: 70, resize: "vertical" }} placeholder={"Tôi quên mật khẩu\nKhông đăng nhập được"} value={form.aliasesText} onChange={(e) => setForm({ ...form, aliasesText: e.target.value })} />
+                  <button
+                    type="button"
+                    onClick={() => suggestAliases(form.title, form.content, setForm)}
+                    disabled={suggestingAliases}
+                    style={{ ...outlineButton, height: "auto", padding: "6px 12px", fontSize: 12, marginBottom: 12 }}
+                  >
+                    {suggestingAliases ? "⏳ AI đang nghĩ gợi ý..." : "🤖 Nhờ AI gợi ý cách hỏi khác"}
+                  </button>
                   <label style={labelStyle}>Danh mục</label>
                   <select style={inputStyle} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
                     {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label} ({c.id})</option>)}
@@ -883,6 +926,14 @@ function App() {
                       <label style={labelStyle}>🔀 Cách hỏi khác (mỗi dòng 1 cách, tuỳ chọn)</label>
                       <div style={{ fontSize: 11.5, color: "#8A8272", marginBottom: 4 }}>Giúp chatbot nhận ra câu hỏi dù người dùng gõ khác đi.</div>
                       <textarea style={{ ...inputStyle, minHeight: 70, resize: "vertical" }} placeholder={"Tôi quên mật khẩu\nKhông đăng nhập được"} value={editForm.aliasesText} onChange={(ev) => setEditForm({ ...editForm, aliasesText: ev.target.value })} />
+                      <button
+                        type="button"
+                        onClick={() => suggestAliases(editForm.title, editForm.content, setEditForm)}
+                        disabled={suggestingAliases}
+                        style={{ ...outlineButton, height: "auto", padding: "6px 12px", fontSize: 12, marginBottom: 12 }}
+                      >
+                        {suggestingAliases ? "⏳ AI đang nghĩ gợi ý..." : "🤖 Nhờ AI gợi ý cách hỏi khác"}
+                      </button>
                       <label style={labelStyle}>Danh mục</label>
                       <select style={inputStyle} value={editForm.category} onChange={(ev) => setEditForm({ ...editForm, category: ev.target.value })}>
                         {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label} ({c.id})</option>)}
