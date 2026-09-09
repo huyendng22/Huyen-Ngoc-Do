@@ -90,7 +90,7 @@ function renderFormattedBlock(text, keyPrefix) {
 
   lines.forEach((line) => {
     const dashMatch = line.match(/^\s*-\s+(.*)$/);
-    const dotMatch = line.match(/^\s*•\s+(.*)$/);
+    const dotMatch = line.match(/^\s*[•*]\s+(.*)$/);
     const numberedMatch = line.match(/^\s*\d+[.)]\s+(.*)$/);
     if (dashMatch) {
       if (!currentList || currentList.type !== "dash") { flushList(); currentList = { type: "dash", items: [] }; }
@@ -578,7 +578,16 @@ function App() {
   // Khi đang gõ trong 1 dòng bullet/số thứ tự và nhấn Enter: tự động nối tiếp cùng kiểu ở dòng mới.
   // Nếu dòng bullet hiện tại đang RỖNG (chỉ có mỗi ký hiệu, chưa gõ chữ) và nhấn Enter -> xoá ký hiệu,
   // thoát khỏi danh sách, chuyển sang dòng trống bình thường (giống Word/Google Docs/Notion).
-  function handleContentKeyDown(e, value, setValue) {
+  function handleContentKeyDown(e, ref, value, setValue) {
+    // Phím tắt định dạng: Ctrl+B / Ctrl+I / Ctrl+U (Mac dùng Cmd = metaKey).
+    const ctrlOrCmd = e.ctrlKey || e.metaKey;
+    if (ctrlOrCmd && !e.altKey) {
+      const key = e.key.toLowerCase();
+      if (key === "b") { e.preventDefault(); wrapSelection(ref, value, setValue, "**"); return; }
+      if (key === "i") { e.preventDefault(); wrapSelection(ref, value, setValue, "*"); return; }
+      if (key === "u") { e.preventDefault(); wrapSelection(ref, value, setValue, "__"); return; }
+    }
+
     if (e.key !== "Enter" || e.shiftKey) return;
     const ta = e.target;
     if (ta.selectionStart !== ta.selectionEnd) return; // đang bôi đen thì để hành vi mặc định
@@ -589,7 +598,9 @@ function App() {
     const currentLine = before.slice(lineStart);
 
     const dashMatch = currentLine.match(/^(\s*)-\s+(.*)$/);
-    const dotMatch = currentLine.match(/^(\s*)•\s+(.*)$/);
+    // "*" dễ gõ hơn "•" trên bàn phím thường -> cho phép cả 2 cùng kích hoạt bullet chấm tròn,
+    // giữ lại đúng ký tự người dùng đã gõ (nhóm 2) khi tự nối sang dòng tiếp theo.
+    const dotMatch = currentLine.match(/^(\s*)([•*])\s+(.*)$/);
     const numMatch = currentLine.match(/^(\s*)(\d+)([.)])\s+(.*)$/);
 
     let exitList = false;
@@ -599,8 +610,8 @@ function App() {
       if (dashMatch[2].trim() === "") exitList = true;
       else insertion = `\n${dashMatch[1]}- `;
     } else if (dotMatch) {
-      if (dotMatch[2].trim() === "") exitList = true;
-      else insertion = `\n${dotMatch[1]}• `;
+      if (dotMatch[3].trim() === "") exitList = true;
+      else insertion = `\n${dotMatch[1]}${dotMatch[2]} `;
     } else if (numMatch) {
       if (numMatch[4].trim() === "") exitList = true;
       else insertion = `\n${numMatch[1]}${parseInt(numMatch[2], 10) + 1}${numMatch[3]} `;
@@ -1013,7 +1024,7 @@ function App() {
                     <button type="button" title="Danh sách gạch đầu dòng" onClick={() => prefixLines(contentRef, form.content, (v) => setForm((prev) => ({ ...prev, content: v })), "dash")} style={formatToolbarBtn}>–≡</button>
                     <button type="button" title="Danh sách chấm tròn" onClick={() => prefixLines(contentRef, form.content, (v) => setForm((prev) => ({ ...prev, content: v })), "dot")} style={formatToolbarBtn}>•≡</button>
                     <button type="button" title="Danh sách đánh số" onClick={() => prefixLines(contentRef, form.content, (v) => setForm((prev) => ({ ...prev, content: v })), "ol")} style={formatToolbarBtn}>1.≡</button>
-                    <div style={{ fontSize: 11, color: "#8A8272", alignSelf: "center", marginLeft: 4 }}>Gõ "-&gt;" tự ra "→". Enter để nối tiếp gạch đầu dòng/chấm tròn/số thứ tự, Enter lần 2 (dòng trống) để thoát.</div>
+                    <div style={{ fontSize: 11, color: "#8A8272", alignSelf: "center", marginLeft: 4 }}>Ctrl+B/I/U = đậm/nghiêng/gạch chân. Gõ "-&gt;" tự ra "→". Đầu dòng gõ "- " hoặc "* " để tự bullet, Enter nối tiếp, Enter lần 2 (dòng trống) để thoát.</div>
                   </div>
                   <textarea
                     ref={contentRef}
@@ -1021,7 +1032,7 @@ function App() {
                     placeholder="Nhập câu trả lời chi tiết..."
                     value={form.content}
                     onChange={(e) => handleContentChange(e, (v) => setForm((prev) => ({ ...prev, content: v })))}
-                    onKeyDown={(e) => handleContentKeyDown(e, form.content, (v) => setForm((prev) => ({ ...prev, content: v })))}
+                    onKeyDown={(e) => handleContentKeyDown(e, contentRef, form.content, (v) => setForm((prev) => ({ ...prev, content: v })))}
                   />
 
                   <label style={labelStyle}>🎥 Link video hướng dẫn (tuỳ chọn)</label>
@@ -1157,7 +1168,7 @@ function App() {
                         placeholder="Nhập câu trả lời chi tiết..."
                         value={editForm.content}
                         onChange={(ev) => handleContentChange(ev, (v) => setEditForm((prev) => ({ ...prev, content: v })))}
-                        onKeyDown={(ev) => handleContentKeyDown(ev, editForm.content, (v) => setEditForm((prev) => ({ ...prev, content: v })))}
+                        onKeyDown={(ev) => handleContentKeyDown(ev, editContentRef, editForm.content, (v) => setEditForm((prev) => ({ ...prev, content: v })))}
                       />
 
                       <label style={labelStyle}>🎥 Link video hướng dẫn (tuỳ chọn)</label>
