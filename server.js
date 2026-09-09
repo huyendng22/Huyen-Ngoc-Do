@@ -102,6 +102,14 @@ function getEntryImages(entry) {
   return result;
 }
 
+// Chỉ lấy những ảnh CHƯA xuất hiện sẵn trong nội dung câu trả lời (đã được chuyên gia chèn thẳng
+// vào giữa các bước) — tránh nhắc lại 1 link ảnh 2 lần trong ngữ cảnh gửi cho AI, đỡ tốn token.
+function getGalleryImages(entry) {
+  const all = getEntryImages(entry);
+  const content = String((entry && entry.content) || "");
+  return all.filter((u) => !content.includes(u));
+}
+
 const DEFAULT_GREETING =
   "Chào bạn, tôi là chatbot hỗ trợ phần mềm. Hãy đặt câu hỏi, tôi sẽ trả lời dựa trên tài liệu hướng dẫn đã được nạp.";
 const ESCALATION_MARKER = "[CẦN_CHUYÊN_GIA]";
@@ -296,7 +304,7 @@ app.post("/api/chat", async (req, res) => {
       let block = `[Mục ${i + 1}] Câu hỏi: ${e.title}\nDanh mục: ${getCategoryLabel(e.category)}\nCâu trả lời: ${e.content}`;
       if (Array.isArray(e.aliases) && e.aliases.length > 0) block += `\nCách hỏi khác cho mục này: ${e.aliases.join(" | ")}`;
       if (e.videoUrl) block += `\nVideo hướng dẫn: ${toAbsolute(e.videoUrl)}`;
-      const images = getEntryImages(e);
+      const images = getGalleryImages(e);
       images.forEach((img, idx) => {
         block += `\nHình ảnh minh hoạ ${idx + 1}: ${toAbsolute(img)}`;
       });
@@ -306,7 +314,7 @@ app.post("/api/chat", async (req, res) => {
 
   const systemPrompt = `Bạn là trợ lý hỗ trợ người dùng phần mềm. Chỉ trả lời dựa trên tài liệu hướng dẫn dưới đây, tuyệt đối không bịa thông tin.
 
-Nếu mục tài liệu bạn dùng để trả lời có kèm "Video hướng dẫn" hoặc "Hình ảnh minh hoạ", hãy thêm nguyên văn (dòng chữ và link URL đó) vào cuối câu trả lời để người dùng xem thêm. Không tự thêm link nếu mục đó không có.
+Nếu mục tài liệu bạn dùng để trả lời có kèm "Video hướng dẫn" hoặc "Hình ảnh minh hoạ", hãy thêm nguyên văn (dòng chữ và link URL đó) vào câu trả lời để người dùng xem thêm — nếu câu trả lời có nhiều bước và có nhiều ảnh minh hoạ tương ứng từng bước, hãy đặt mỗi link ảnh trên 1 dòng riêng, ngay sau bước mà nó minh hoạ (không dồn hết ảnh xuống cuối), để người dùng dễ theo dõi. Không tự thêm link nếu mục đó không có.
 
 Trả lời ngắn gọn, rõ ràng, theo từng bước nếu là hướng dẫn thao tác. Trả lời bằng tiếng Việt.
 
