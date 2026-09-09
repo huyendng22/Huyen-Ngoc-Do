@@ -124,13 +124,34 @@ function renderFormattedBlock(text, keyPrefix, onImageClick) {
   }
 
   lines.forEach((line) => {
+    const headingMatch = line.match(/^##\s+(.*)$/);
     const bareUrlMatch = line.trim().match(/^(https?:\/\/\S+)$/);
     const dashMatch = line.match(/^\s*-\s+(.*)$/);
     const dotMatch = line.match(/^\s*[•*]\s+(.*)$/);
     const numberedMatch = line.match(/^\s*\d+[.)]\s+(.*)$/);
-    if (bareUrlMatch) {
+    if (headingMatch) {
       flushList();
-      blocks.push({ type: "url", url: bareUrlMatch[1] });
+      blocks.push({ type: "heading", text: headingMatch[1] });
+    } else if (bareUrlMatch) {
+      const url = bareUrlMatch[1];
+      if (isImageUrl(url)) {
+        // Nhiều dòng ảnh liền kề nhau (không bị chữ/danh sách/dòng trống xen giữa) -> gộp vào
+        // cùng 1 "hàng ảnh" để hiển thị dạng album nhỏ cạnh nhau, thay vì xếp chồng dọc từng ảnh to.
+        // QUAN TRỌNG: phải "chốt" (flush) danh sách đang dang dở TRƯỚC khi so sánh với block cuối
+        // cùng — nếu không, 1 danh sách chưa kịp đưa vào blocks sẽ khiến ảnh "nhìn xuyên qua" nó
+        // và gộp nhầm với hàng ảnh trước đó dù có chữ xen giữa.
+        const hadPendingList = !!currentList;
+        flushList();
+        const lastBlock = blocks[blocks.length - 1];
+        if (!hadPendingList && lastBlock && lastBlock.type === "imageRow") {
+          lastBlock.urls.push(url);
+        } else {
+          blocks.push({ type: "imageRow", urls: [url] });
+        }
+      } else {
+        flushList();
+        blocks.push({ type: "url", url });
+      }
     } else if (dashMatch) {
       if (!currentList || currentList.type !== "dash") { flushList(); currentList = { type: "dash", items: [] }; }
       currentList.items.push(dashMatch[1]);
@@ -147,20 +168,37 @@ function renderFormattedBlock(text, keyPrefix, onImageClick) {
   });
   flushList();
 
+  let numberedRunningCount = 0; // đánh số liên tục xuyên suốt dù danh sách bị chen giữa bởi ảnh/chữ khác
   return blocks.map((b, i) => {
     const k = `${keyPrefix}-blk${i}`;
+    if (b.type === "heading") {
+      return (
+        <div key={k} style={{ fontSize: 15, fontWeight: 700, margin: "14px 0 6px", paddingBottom: 5, borderBottom: "1px solid #DDD7C9" }}>
+          {parseInlineFormatting(b.text, k, onImageClick)}
+        </div>
+      );
+    }
+    if (b.type === "imageRow") {
+      const single = b.urls.length === 1;
+      return (
+        <div key={k} style={{ display: "flex", flexWrap: "wrap", gap: 8, margin: "8px 0" }}>
+          {b.urls.map((url, ui) => (
+            <SafeImage
+              key={`${k}-${ui}`}
+              src={url}
+              alt="Hình minh hoạ"
+              onClick={onImageClick ? () => onImageClick(url) : undefined}
+              style={
+                single
+                  ? { maxWidth: "100%", maxHeight: 260, borderRadius: 8, cursor: onImageClick ? "zoom-in" : "default" }
+                  : { width: 180, height: 180, objectFit: "cover", borderRadius: 8, cursor: onImageClick ? "zoom-in" : "default", flex: "0 0 auto" }
+              }
+            />
+          ))}
+        </div>
+      );
+    }
     if (b.type === "url") {
-      if (isImageUrl(b.url)) {
-        return (
-          <SafeImage
-            key={k}
-            src={b.url}
-            alt="Hình minh hoạ"
-            onClick={onImageClick ? () => onImageClick(b.url) : undefined}
-            style={{ maxWidth: "100%", maxHeight: 260, borderRadius: 8, display: "block", margin: "8px 0", cursor: onImageClick ? "zoom-in" : "default" }}
-          />
-        );
-      }
       return (
         <div key={k} style={{ margin: "4px 0" }}>
           <a href={b.url} target="_blank" rel="noreferrer" style={{ color: "inherit", textDecoration: "underline", wordBreak: "break-all" }}>{b.url}</a>
@@ -182,8 +220,10 @@ function renderFormattedBlock(text, keyPrefix, onImageClick) {
       );
     }
     if (b.type === "ol") {
+      const startAt = numberedRunningCount + 1;
+      numberedRunningCount += b.items.length;
       return (
-        <ol key={k} style={{ margin: "4px 0", paddingLeft: 22 }}>
+        <ol key={k} start={startAt} style={{ margin: "4px 0", paddingLeft: 22 }}>
           {b.items.map((it, j) => <li key={`${k}-${j}`} style={{ marginBottom: 2 }}>{parseInlineFormatting(it, `${k}-${j}`, onImageClick)}</li>)}
         </ol>
       );
@@ -320,6 +360,7 @@ function App() {
   const [editForm, setEditForm] = useState({ ...EMPTY_FORM });
   const [newImageUrlDraftEdit, setNewImageUrlDraftEdit] = useState("");
   const editImageInputRef = useRef(null);
+  const editQuickImageInputRef = useRef(null);
   const [entryMode, setEntryMode] = useState("single");
   const [bulkText, setBulkText] = useState("");
   const [bulkCategory, setBulkCategory] = useState(CATEGORIES[0].id);
@@ -328,6 +369,7 @@ function App() {
   const contentRef = useRef(null);
   const editContentRef = useRef(null);
   const imageInputRef = useRef(null);
+  const quickImageInputRef = useRef(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [suggestingAliases, setSuggestingAliases] = useState(false);
   const [uploadError, setUploadError] = useState("");
@@ -557,9 +599,7 @@ function App() {
     XLSX.writeFile(wb, "mau_nhap_du_lieu_chatbot.xlsx");
   }
 
-  async function handleImageUpload(event, onSuccess) {
-    const file = event.target.files && event.target.files[0];
-    if (!file) return;
+  async function uploadImageFile(file) {
     setUploadError("");
     setUploadingImage(true);
     try {
@@ -573,17 +613,27 @@ function App() {
       const data = await r.json().catch(() => ({}));
       if (r.status === 401) {
         setUploadError("Sai mã quản trị — nhập mã ở tab Cài đặt trước khi tải ảnh.");
-      } else if (!r.ok || !data.ok) {
-        setUploadError(data.error || "Tải ảnh lên thất bại.");
-      } else {
-        onSuccess(data.url);
+        return null;
       }
+      if (!r.ok || !data.ok) {
+        setUploadError(data.error || "Tải ảnh lên thất bại.");
+        return null;
+      }
+      return data.url;
     } catch (e) {
       setUploadError("Lỗi kết nối khi tải ảnh lên.");
+      return null;
     } finally {
       setUploadingImage(false);
-      event.target.value = "";
     }
+  }
+
+  async function handleImageUpload(event, onSuccess) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    const url = await uploadImageFile(file);
+    if (url) onSuccess(url);
+    event.target.value = "";
   }
 
   function addImageUrl(setTarget, url) {
@@ -619,6 +669,32 @@ function App() {
       ta.focus();
       ta.setSelectionRange(newPos, newPos);
     });
+  }
+
+  async function handleContentPaste(e, ref, contentValue, setContentValue) {
+    const items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    let imageFile = null;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type && items[i].type.startsWith("image/")) {
+        imageFile = items[i].getAsFile();
+        break;
+      }
+    }
+    if (!imageFile) return;
+    e.preventDefault();
+    const url = await uploadImageFile(imageFile);
+    if (url) insertImageIntoContent(ref, contentValue, setContentValue, url);
+  }
+
+  async function handleContentDrop(e, ref, contentValue, setContentValue) {
+    const files = e.dataTransfer && e.dataTransfer.files;
+    if (!files || files.length === 0) return;
+    const imageFile = Array.from(files).find((f) => f.type && f.type.startsWith("image/"));
+    if (!imageFile) return;
+    e.preventDefault();
+    const url = await uploadImageFile(imageFile);
+    if (url) insertImageIntoContent(ref, contentValue, setContentValue, url);
   }
 
   // Bọc vùng đang bôi đen trong textarea bằng ký hiệu định dạng (đậm/nghiêng/gạch chân).
@@ -729,6 +805,28 @@ function App() {
     requestAnimationFrame(() => {
       ta.focus();
       ta.setSelectionRange(start, start + prefixed.length);
+    });
+  }
+
+  // Bật/tắt "Tiêu đề phần" cho DÒNG hiện tại (nơi đặt con trỏ, hoặc dòng đầu tiên nếu có bôi đen
+  // nhiều dòng). Bấm lần nữa trên dòng đã là tiêu đề sẽ bỏ tiêu đề, về lại chữ thường.
+  function toggleHeading(ref, value, setValue) {
+    const ta = ref.current;
+    if (!ta) return;
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const lineStart = value.lastIndexOf("\n", Math.max(start - 1, 0)) + 1;
+    let lineEnd = value.indexOf("\n", end);
+    if (lineEnd === -1) lineEnd = value.length;
+    const currentLine = value.slice(lineStart, lineEnd);
+    const existing = currentLine.match(/^##\s+(.*)$/);
+    const newLine = existing ? existing[1] : `## ${currentLine.trim() || "Tiêu đề phần"}`;
+    const newValue = value.slice(0, lineStart) + newLine + value.slice(lineEnd);
+    setValue(newValue);
+    const newPos = lineStart + newLine.length;
+    requestAnimationFrame(() => {
+      ta.focus();
+      ta.setSelectionRange(newPos, newPos);
     });
   }
 
@@ -1090,22 +1188,41 @@ function App() {
                     {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label} ({c.id})</option>)}
                   </select>
                   <label style={labelStyle}>Câu trả lời</label>
-                  <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+                  <div style={{ display: "flex", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
+                    <button type="button" title="Tiêu đề phần (đánh dấu 1 mục lớn trong câu trả lời, VD 'Phần 1: ...')" onClick={() => toggleHeading(contentRef, form.content, (v) => setForm((prev) => ({ ...prev, content: v })))} style={{ ...formatToolbarBtn, width: "auto", padding: "0 8px", fontWeight: 700, fontSize: 12 }}>Tiêu đề</button>
                     <button type="button" title="Đậm" onClick={() => wrapSelection(contentRef, form.content, (v) => setForm((prev) => ({ ...prev, content: v })), "**")} style={formatToolbarBtn}><strong>B</strong></button>
                     <button type="button" title="Nghiêng" onClick={() => wrapSelection(contentRef, form.content, (v) => setForm((prev) => ({ ...prev, content: v })), "*")} style={formatToolbarBtn}><em>I</em></button>
                     <button type="button" title="Gạch chân" onClick={() => wrapSelection(contentRef, form.content, (v) => setForm((prev) => ({ ...prev, content: v })), "__")} style={formatToolbarBtn}><u>U</u></button>
                     <button type="button" title="Danh sách gạch đầu dòng" onClick={() => prefixLines(contentRef, form.content, (v) => setForm((prev) => ({ ...prev, content: v })), "dash")} style={formatToolbarBtn}>–≡</button>
                     <button type="button" title="Danh sách chấm tròn" onClick={() => prefixLines(contentRef, form.content, (v) => setForm((prev) => ({ ...prev, content: v })), "dot")} style={formatToolbarBtn}>•≡</button>
                     <button type="button" title="Danh sách đánh số" onClick={() => prefixLines(contentRef, form.content, (v) => setForm((prev) => ({ ...prev, content: v })), "ol")} style={formatToolbarBtn}>1.≡</button>
-                    <div style={{ fontSize: 11, color: "#8A8272", alignSelf: "center", marginLeft: 4 }}>Ctrl+B/I/U = đậm/nghiêng/gạch chân. Gõ "-&gt;" tự ra "→". Đầu dòng gõ "- " hoặc "* " để tự bullet, Enter nối tiếp, Enter lần 2 (dòng trống) để thoát. Muốn chèn ảnh vào giữa các bước: thêm ảnh ở khung bên dưới rồi bấm "➕ Chèn vào câu trả lời" đúng vị trí con trỏ.</div>
+                    <input
+                      ref={quickImageInputRef}
+                      type="file"
+                      accept="image/*"
+                      style={{ display: "none" }}
+                      onChange={async (e) => {
+                        const file = e.target.files && e.target.files[0];
+                        e.target.value = "";
+                        if (!file) return;
+                        const url = await uploadImageFile(file);
+                        if (url) insertImageIntoContent(contentRef, form.content, (v) => setForm((prev) => ({ ...prev, content: v })), url);
+                      }}
+                    />
+                    <button type="button" title="Chèn ảnh (chọn file, tự tải lên và chèn ngay vào vị trí con trỏ)" onClick={() => quickImageInputRef.current && quickImageInputRef.current.click()} disabled={uploadingImage} style={formatToolbarBtn}>
+                      {uploadingImage ? "⏳" : "🖼️"}
+                    </button>
+                    <div style={{ fontSize: 11, color: "#8A8272", alignSelf: "center", marginLeft: 4 }}>Nút "Tiêu đề" đánh dấu dòng hiện tại thành tiêu đề 1 phần (bấm lại để bỏ). Ctrl+B/I/U = đậm/nghiêng/gạch chân. Gõ "-&gt;" tự ra "→". Đầu dòng gõ "- " hoặc "* " để tự bullet, Enter nối tiếp, Enter lần 2 (dòng trống) để thoát. <strong>Chèn ảnh dễ nhất: dán trực tiếp (Ctrl+V), kéo-thả file vào ô, hoặc bấm nút 🖼️. Nhiều ảnh liền nhau (không cách dòng trống) sẽ tự xếp thành 1 hàng.</strong></div>
                   </div>
                   <textarea
                     ref={contentRef}
                     style={{ ...inputStyle, minHeight: 100, resize: "vertical" }}
-                    placeholder="Nhập câu trả lời chi tiết..."
+                    placeholder="Nhập câu trả lời chi tiết... (có thể dán ảnh trực tiếp bằng Ctrl+V, hoặc kéo-thả file ảnh vào đây)"
                     value={form.content}
                     onChange={(e) => handleContentChange(e, (v) => setForm((prev) => ({ ...prev, content: v })))}
                     onKeyDown={(e) => handleContentKeyDown(e, contentRef, form.content, (v) => setForm((prev) => ({ ...prev, content: v })))}
+                    onPaste={(e) => handleContentPaste(e, contentRef, form.content, (v) => setForm((prev) => ({ ...prev, content: v })))}
+                    onDrop={(e) => handleContentDrop(e, contentRef, form.content, (v) => setForm((prev) => ({ ...prev, content: v })))}
                   />
                   {form.content.trim() && (
                     <div style={{ marginTop: 6, marginBottom: 12 }}>
@@ -1245,21 +1362,41 @@ function App() {
                         {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label} ({c.id})</option>)}
                       </select>
                       <label style={labelStyle}>Câu trả lời</label>
-                      <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+                      <div style={{ display: "flex", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
+                        <button type="button" title="Tiêu đề phần (đánh dấu 1 mục lớn trong câu trả lời, VD 'Phần 1: ...')" onClick={() => toggleHeading(editContentRef, editForm.content, (v) => setEditForm((prev) => ({ ...prev, content: v })))} style={{ ...formatToolbarBtn, width: "auto", padding: "0 8px", fontWeight: 700, fontSize: 12 }}>Tiêu đề</button>
                         <button type="button" title="Đậm" onClick={() => wrapSelection(editContentRef, editForm.content, (v) => setEditForm((prev) => ({ ...prev, content: v })), "**")} style={formatToolbarBtn}><strong>B</strong></button>
                         <button type="button" title="Nghiêng" onClick={() => wrapSelection(editContentRef, editForm.content, (v) => setEditForm((prev) => ({ ...prev, content: v })), "*")} style={formatToolbarBtn}><em>I</em></button>
                         <button type="button" title="Gạch chân" onClick={() => wrapSelection(editContentRef, editForm.content, (v) => setEditForm((prev) => ({ ...prev, content: v })), "__")} style={formatToolbarBtn}><u>U</u></button>
                         <button type="button" title="Danh sách gạch đầu dòng" onClick={() => prefixLines(editContentRef, editForm.content, (v) => setEditForm((prev) => ({ ...prev, content: v })), "dash")} style={formatToolbarBtn}>–≡</button>
                         <button type="button" title="Danh sách chấm tròn" onClick={() => prefixLines(editContentRef, editForm.content, (v) => setEditForm((prev) => ({ ...prev, content: v })), "dot")} style={formatToolbarBtn}>•≡</button>
                         <button type="button" title="Danh sách đánh số" onClick={() => prefixLines(editContentRef, editForm.content, (v) => setEditForm((prev) => ({ ...prev, content: v })), "ol")} style={formatToolbarBtn}>1.≡</button>
+                        <input
+                          ref={editQuickImageInputRef}
+                          type="file"
+                          accept="image/*"
+                          style={{ display: "none" }}
+                          onChange={async (ev) => {
+                            const file = ev.target.files && ev.target.files[0];
+                            ev.target.value = "";
+                            if (!file) return;
+                            const url = await uploadImageFile(file);
+                            if (url) insertImageIntoContent(editContentRef, editForm.content, (v) => setEditForm((prev) => ({ ...prev, content: v })), url);
+                          }}
+                        />
+                        <button type="button" title="Chèn ảnh (chọn file, tự tải lên và chèn ngay vào vị trí con trỏ)" onClick={() => editQuickImageInputRef.current && editQuickImageInputRef.current.click()} disabled={uploadingImage} style={formatToolbarBtn}>
+                          {uploadingImage ? "⏳" : "🖼️"}
+                        </button>
+                        <div style={{ fontSize: 11, color: "#8A8272", alignSelf: "center", marginLeft: 4 }}><strong>Chèn ảnh dễ nhất: dán trực tiếp (Ctrl+V), kéo-thả file vào ô, hoặc bấm nút 🖼️. Nhiều ảnh liền nhau sẽ tự xếp thành 1 hàng.</strong></div>
                       </div>
                       <textarea
                         ref={editContentRef}
                         style={{ ...inputStyle, minHeight: 100, resize: "vertical" }}
-                        placeholder="Nhập câu trả lời chi tiết..."
+                        placeholder="Nhập câu trả lời chi tiết... (có thể dán ảnh trực tiếp bằng Ctrl+V, hoặc kéo-thả file ảnh vào đây)"
                         value={editForm.content}
                         onChange={(ev) => handleContentChange(ev, (v) => setEditForm((prev) => ({ ...prev, content: v })))}
                         onKeyDown={(ev) => handleContentKeyDown(ev, editContentRef, editForm.content, (v) => setEditForm((prev) => ({ ...prev, content: v })))}
+                        onPaste={(ev) => handleContentPaste(ev, editContentRef, editForm.content, (v) => setEditForm((prev) => ({ ...prev, content: v })))}
+                        onDrop={(ev) => handleContentDrop(ev, editContentRef, editForm.content, (v) => setEditForm((prev) => ({ ...prev, content: v })))}
                       />
                       {editForm.content.trim() && (
                         <div style={{ marginTop: 6, marginBottom: 12 }}>
