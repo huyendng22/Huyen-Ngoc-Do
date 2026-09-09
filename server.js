@@ -197,7 +197,62 @@ app.post("/api/kb/import", requireAdmin, (req, res) => {
   res.json({ ok: true, added: withIds.length, kb });
 });
 
-// ================= CÀI ĐẶT (dùng chung) =================
+// AI gợi ý "cách hỏi khác" (alias) dựa trên câu hỏi + câu trả lời chuyên gia vừa nhập.
+// Dùng model rẻ (Haiku) vì đây là tác vụ đơn giản, không cần suy luận phức tạp.
+app.post("/api/suggest-aliases", requireAdmin, async (req, res) => {
+  const { title, content } = req.body;
+  if (!title || !content) {
+    return res.status(400).json({ ok: false, error: "Thiếu câu hỏi hoặc câu trả lời." });
+  }
+  if (!ANTHROPIC_API_KEY) {
+    return res.status(500).json({ ok: false, error: "Server chưa cấu hình ANTHROPIC_API_KEY." });
+  }
+
+  const prompt = `Đây là 1 mục trong tài liệu hướng dẫn của phần mềm hành chính công (đánh giá công chức):
+Câu hỏi: ${title}
+Câu trả lời: ${String(content).slice(0, 1500)}
+
+Hãy nghĩ ra 3 CÁCH HỎI KHÁC cho cùng câu hỏi trên — cách một công chức bình thường (không rành công nghệ) có thể gõ để hỏi đúng nội dung này. Yêu cầu:
+- Ngắn gọn, tự nhiên, khẩu ngữ, KHÔNG lặp lại y nguyên câu hỏi gốc.
+- Mỗi cách hỏi là 1 câu độc lập, không đánh số, không giải thích thêm.
+- Chỉ trả lời bằng đúng 1 mảng JSON chứa 3 chuỗi tiếng Việt, không có bất kỳ chữ nào khác trước/sau. Ví dụ: ["câu 1","câu 2","câu 3"]`;
+
+  try {
+    const response = await axios.post(
+      "https://api.anthropic.com/v1/messages",
+      {
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 300,
+        messages: [{ role: "user", content: prompt }],
+      },
+      {
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+        },
+      }
+    );
+    const rawText = (response.data.content || []).map((b) => (b.type === "text" ? b.text : "")).filter(Boolean).join("");
+    let aliases = [];
+    try {
+      const cleaned = rawText.replace(/```json|```/g, "").trim();
+      const parsed = JSON.parse(cleaned);
+      if (Array.isArray(parsed)) aliases = parsed.map((a) => String(a || "").trim()).filter(Boolean);
+    } catch (parseErr) {
+      return res.status(500).json({ ok: false, error: "AI trả lời sai định dạng, thử lại lần nữa xem sao." });
+    }
+    res.json({ ok: true, aliases });
+  } catch (err) {
+    const anthropicError = err.response?.data?.error;
+    console.error(anthropicError || err.message);
+    let detail = "";
+    if (anthropicError?.type === "authentication_error") detail = " (Sai hoặc thiếu ANTHROPIC_API_KEY.)";
+    else if (anthropicError?.type === "rate_limit_error") detail = " (Vượt giới hạn tốc độ API key, thử lại sau ít phút.)";
+    else if (anthropicError?.message) detail = ` (${anthropicError.message})`;
+    res.status(500).json({ ok: false, error: `Lỗi khi gọi AI gợi ý.${detail}` });
+  }
+});
 app.get("/api/settings", (req, res) => {
   res.json(settings);
 });
