@@ -21,8 +21,10 @@ const fs = require("fs");
 const path = require("path");
 const multer = require("multer");
 require("dotenv").config();
+const db = require("./db");
 
 const app = express();
+app.use("/api/restore-image", express.json({ limit: "12mb" }));
 app.use(express.json({ limit: "2mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
@@ -34,21 +36,8 @@ const ZALO_APP_ID = process.env.ZALO_APP_ID;
 const ZALO_APP_SECRET = process.env.ZALO_APP_SECRET;
 const ZALO_CALLBACK_URL = process.env.ZALO_CALLBACK_URL;
 
-const DATA_DIR = path.join(__dirname, "data");
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
-
-const UPLOADS_DIR = path.join(DATA_DIR, "uploads");
-if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR);
-app.use("/uploads", express.static(UPLOADS_DIR));
-
 const upload = multer({
-  storage: multer.diskStorage({
-    destination: (req, file, cb) => cb(null, UPLOADS_DIR),
-    filename: (req, file, cb) => {
-      const ext = path.extname(file.originalname || "").slice(0, 10);
-      cb(null, `${Date.now()}-${crypto.randomBytes(4).toString("hex")}${ext}`);
-    },
-  }),
+  storage: multer.memoryStorage(), // giữ ảnh trong RAM rồi ghi vào DB (không phụ thuộc ổ đĩa của Render)
   limits: { fileSize: 5 * 1024 * 1024 }, // tối đa 5MB mỗi ảnh
   fileFilter: (req, file, cb) => {
     if (!/^image\//.test(file.mimetype)) return cb(new Error("Chỉ chấp nhận file ảnh (jpg, png, gif, webp...)."));
@@ -56,22 +45,29 @@ const upload = multer({
   },
 });
 
-const KB_FILE = path.join(DATA_DIR, "kb.json");
-const SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
-const ESCALATIONS_FILE = path.join(DATA_DIR, "escalations.json");
-const TOKEN_FILE = path.join(DATA_DIR, "zalo-tokens.json");
-const ZALO_CONFIG_FILE = path.join(DATA_DIR, "zalo-config.json");
-
-function readJson(file, fallback) {
+// Lưu 1 giá trị JSON vào kho dữ liệu bền vững (Postgres) — dùng await để chắc chắn đã ghi xong.
+async function persist(key, data) {
   try {
-    return JSON.parse(fs.readFileSync(file, "utf8"));
+    await db.setJson(key, data);
   } catch (e) {
-    return fallback;
+    console.error(`Lỗi khi lưu "${key}":`, e.message);
+    throw e;
   }
 }
-function writeJson(file, data) {
-  fs.writeFileSync(file, JSON.stringify(data, null, 2));
-}
+
+// Phục vụ ảnh đã tải lên: đọc từ DB (hoặc từ đĩa nếu chưa cấu hình DATABASE_URL)
+app.get("/uploads/:filename", async (req, res) => {
+  try {
+    const img = await db.getImage(path.basename(req.params.filename));
+    if (!img) return res.status(404).send("Không tìm thấy ảnh.");
+    res.set("Content-Type", img.mime);
+    res.set("Cache-Control", "public, max-age=86400");
+    res.send(img.data);
+  } catch (e) {
+    console.error(e.message);
+    res.status(500).send("Lỗi đọc ảnh.");
+  }
+});
 
 const CATEGORIES = [
   { id: "HD", label: "Hướng dẫn thao tác" },
@@ -114,7 +110,7 @@ const DEFAULT_GREETING =
   "Chào bạn, tôi là chatbot hỗ trợ phần mềm. Hãy đặt câu hỏi, tôi sẽ trả lời dựa trên tài liệu hướng dẫn đã được nạp.";
 const ESCALATION_MARKER = "[CẦN_CHUYÊN_GIA]";
 
-let kb = readJson(KB_FILE, {
+const DEFAULT_KB = {
   entries: [
     {
       id: "seed-1",
@@ -124,11 +120,8 @@ let kb = readJson(KB_FILE, {
         "Vào trang đăng nhập > bấm 'Quên mật khẩu' > nhập email đã đăng ký > làm theo hướng dẫn trong email.",
     },
   ],
-});
-let settings = readJson(SETTINGS_FILE, { greeting: DEFAULT_GREETING, expertEmail: "" });
-let escalations = readJson(ESCALATIONS_FILE, []);
-let zaloTokens = readJson(TOKEN_FILE, null);
-let zaloConfig = readJson(ZALO_CONFIG_FILE, { expertUserId: null, recentSenders: [] });
+};
+let kb, settings, escalations, zaloTokens, zaloConfig; // được nạp từ DB trong hàm start() ở cuối file
 
 // ---------- Khoá đơn giản cho các thao tác ghi/sửa dữ liệu dùng chung ----------
 function requireAdmin(req, res, next) {
@@ -143,29 +136,37 @@ function requireAdmin(req, res, next) {
 // ================= CƠ SỞ TRI THỨC (dùng chung) =================
 // ================= TẢI ẢNH MINH HOẠ LÊN SERVER =================
 app.post("/api/upload-image", requireAdmin, (req, res) => {
-  upload.single("image")(req, res, (err) => {
+  upload.single("image")(req, res, async (err) => {
     if (err) {
       const msg = err.code === "LIMIT_FILE_SIZE" ? "Ảnh vượt quá 5MB." : err.message || "Lỗi khi tải ảnh lên.";
       return res.status(400).json({ ok: false, error: msg });
     }
     if (!req.file) return res.status(400).json({ ok: false, error: "Không nhận được file." });
-    res.json({ ok: true, url: `/uploads/${req.file.filename}` });
+    const ext = path.extname(req.file.originalname || "").slice(0, 10);
+    const filename = `${Date.now()}-${crypto.randomBytes(4).toString("hex")}${ext}`;
+    try {
+      await db.saveImage(filename, req.file.mimetype, req.file.buffer);
+      res.json({ ok: true, url: `/uploads/${filename}` });
+    } catch (e) {
+      console.error(e.message);
+      res.status(500).json({ ok: false, error: "Không lưu được ảnh vào cơ sở dữ liệu." });
+    }
   });
 });
 
 // Ghi lại file ảnh lên server từ dữ liệu base64 trong file sao lưu (dùng khi Khôi phục,
 // vì file sao lưu chỉ có thể chứa dữ liệu ảnh, không thể tự ghi vào ổ đĩa server).
-app.post("/api/restore-image", requireAdmin, (req, res) => {
+app.post("/api/restore-image", requireAdmin, async (req, res) => {
   const { path: relPath, dataUrl } = req.body || {};
   if (!relPath || typeof relPath !== "string" || !relPath.startsWith("/uploads/")) {
     return res.status(400).json({ ok: false, error: "Đường dẫn ảnh không hợp lệ." });
   }
-  const matches = /^data:image\/[a-zA-Z0-9.+-]+;base64,([\s\S]+)$/.exec(dataUrl || "");
+  const matches = /^data:(image\/[a-zA-Z0-9.+-]+);base64,([\s\S]+)$/.exec(dataUrl || "");
   if (!matches) return res.status(400).json({ ok: false, error: "Dữ liệu ảnh không hợp lệ." });
   const filename = path.basename(relPath); // chống path traversal, chỉ lấy tên file
   try {
-    const buffer = Buffer.from(matches[1], "base64");
-    fs.writeFileSync(path.join(UPLOADS_DIR, filename), buffer);
+    const buffer = Buffer.from(matches[2], "base64");
+    await db.saveImage(filename, matches[1], buffer);
     res.json({ ok: true, url: `/uploads/${filename}` });
   } catch (e) {
     res.status(500).json({ ok: false, error: "Không ghi được file ảnh lên server." });
@@ -177,16 +178,16 @@ app.get("/api/kb", (req, res) => {
 });
 
 // Ghi đè toàn bộ danh sách (dùng khi thêm/xoá 1 mục từ giao diện)
-app.put("/api/kb", requireAdmin, (req, res) => {
+app.put("/api/kb", requireAdmin, async (req, res) => {
   const { entries } = req.body;
   if (!Array.isArray(entries)) return res.status(400).json({ ok: false, error: "Thiếu entries" });
   kb = { entries };
-  writeJson(KB_FILE, kb);
+  await persist("kb", kb);
   res.json({ ok: true, kb });
 });
 
 // Nhập hàng loạt (dán tay hoặc từ Excel) — nối thêm vào danh sách hiện có
-app.post("/api/kb/import", requireAdmin, (req, res) => {
+app.post("/api/kb/import", requireAdmin, async (req, res) => {
   const { entries } = req.body;
   if (!Array.isArray(entries) || entries.length === 0) {
     return res.status(400).json({ ok: false, error: "Không có dữ liệu để nhập." });
@@ -201,7 +202,7 @@ app.post("/api/kb/import", requireAdmin, (req, res) => {
     aliases: Array.isArray(e.aliases) ? e.aliases.map((a) => String(a || "").trim()).filter(Boolean) : [],
   }));
   kb = { entries: [...withIds, ...kb.entries] };
-  writeJson(KB_FILE, kb);
+  await persist("kb", kb);
   res.json({ ok: true, added: withIds.length, kb });
 });
 
@@ -265,13 +266,13 @@ app.get("/api/settings", (req, res) => {
   res.json(settings);
 });
 
-app.put("/api/settings", requireAdmin, (req, res) => {
+app.put("/api/settings", requireAdmin, async (req, res) => {
   const { greeting, expertEmail } = req.body;
   settings = {
     greeting: greeting !== undefined ? greeting : settings.greeting,
     expertEmail: expertEmail !== undefined ? expertEmail : settings.expertEmail,
   };
-  writeJson(SETTINGS_FILE, settings);
+  await persist("settings", settings);
   res.json({ ok: true, settings });
 });
 
@@ -280,9 +281,9 @@ app.get("/api/escalations", (req, res) => {
   res.json(escalations);
 });
 
-app.delete("/api/escalations/:id", requireAdmin, (req, res) => {
+app.delete("/api/escalations/:id", requireAdmin, async (req, res) => {
   escalations = escalations.filter((t) => t.id !== req.params.id);
-  writeJson(ESCALATIONS_FILE, escalations);
+  await persist("escalations", escalations);
   res.json({ ok: true });
 });
 
@@ -416,7 +417,7 @@ app.get("/oauth/callback", async (req, res) => {
       { headers: { "Content-Type": "application/x-www-form-urlencoded", secret_key: ZALO_APP_SECRET } }
     );
     zaloTokens = { ...response.data, obtained_at: Date.now() };
-    writeJson(TOKEN_FILE, zaloTokens);
+    await persist("zalo-tokens", zaloTokens);
     res.send("✅ Đã lấy access_token Zalo OA thành công. Bạn có thể đóng tab này.");
   } catch (err) {
     console.error(err.response?.data || err.message);
@@ -437,7 +438,7 @@ async function refreshZaloToken() {
       { headers: { "Content-Type": "application/x-www-form-urlencoded", secret_key: ZALO_APP_SECRET } }
     );
     zaloTokens = { ...zaloTokens, ...response.data, obtained_at: Date.now() };
-    writeJson(TOKEN_FILE, zaloTokens);
+    await persist("zalo-tokens", zaloTokens);
     console.log("🔄 Đã làm mới Zalo access_token lúc", new Date().toLocaleString("vi-VN"));
   } catch (err) {
     console.error("Lỗi làm mới Zalo token:", err.response?.data || err.message);
@@ -452,7 +453,7 @@ async function getValidZaloToken() {
   return zaloTokens.access_token;
 }
 
-app.post("/webhook", (req, res) => {
+app.post("/webhook", async (req, res) => {
   const event = req.body;
   const senderId = event?.sender?.id;
   if (senderId) {
@@ -460,7 +461,7 @@ app.post("/webhook", (req, res) => {
       { user_id: senderId, at: new Date().toISOString() },
       ...(zaloConfig.recentSenders || []).filter((s) => s.user_id !== senderId),
     ].slice(0, 20);
-    writeJson(ZALO_CONFIG_FILE, zaloConfig);
+    await persist("zalo-config", zaloConfig);
   }
   res.sendStatus(200);
 });
@@ -469,11 +470,11 @@ app.get("/admin/recent-senders", requireAdmin, (req, res) => {
   res.json(zaloConfig.recentSenders || []);
 });
 
-app.put("/admin/expert", requireAdmin, (req, res) => {
+app.put("/admin/expert", requireAdmin, async (req, res) => {
   const { userId } = req.body;
   if (!userId) return res.status(400).json({ error: "Thiếu userId" });
   zaloConfig.expertUserId = userId;
-  writeJson(ZALO_CONFIG_FILE, zaloConfig);
+  await persist("zalo-config", zaloConfig);
   res.json({ ok: true, expertUserId: userId });
 });
 
@@ -516,19 +517,33 @@ app.post("/api/escalate", async (req, res) => {
 
   ticket.sentVia = sentVia || "chưa gửi được";
   escalations = [ticket, ...escalations];
-  writeJson(ESCALATIONS_FILE, escalations);
+  await persist("escalations", escalations);
 
   res.json({ ok: !!sentVia, sentVia, error: sentVia ? undefined : errorText || "Chưa cấu hình Zalo OA cho chuyên gia." });
 });
 
 app.get("/health", (req, res) => res.json({ ok: true }));
 
-app.listen(PORT, () => {
-  console.log(`🚀 Website chatbot hỗ trợ đang chạy tại http://localhost:${PORT}`);
-  setInterval(async () => {
-    if (!zaloTokens) return;
-    const ageSeconds = (Date.now() - zaloTokens.obtained_at) / 1000;
-    const expiresIn = Number(zaloTokens.expires_in || 3600);
-    if (ageSeconds > expiresIn - 600) await refreshZaloToken();
-  }, 5 * 60 * 1000);
+async function start() {
+  await db.init();
+  kb = await db.getJson("kb", DEFAULT_KB);
+  settings = await db.getJson("settings", { greeting: DEFAULT_GREETING, expertEmail: "" });
+  escalations = await db.getJson("escalations", []);
+  zaloTokens = await db.getJson("zalo-tokens", null);
+  zaloConfig = await db.getJson("zalo-config", { expertUserId: null, recentSenders: [] });
+
+  app.listen(PORT, () => {
+    console.log(`🚀 Website chatbot hỗ trợ đang chạy tại http://localhost:${PORT}`);
+    setInterval(async () => {
+      if (!zaloTokens) return;
+      const ageSeconds = (Date.now() - zaloTokens.obtained_at) / 1000;
+      const expiresIn = Number(zaloTokens.expires_in || 3600);
+      if (ageSeconds > expiresIn - 600) await refreshZaloToken();
+    }, 5 * 60 * 1000);
+  });
+}
+
+start().catch((e) => {
+  console.error("Không khởi động được server:", e.message);
+  process.exit(1);
 });
