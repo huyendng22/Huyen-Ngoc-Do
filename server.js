@@ -21,9 +21,9 @@ const fs = require("fs");
 const path = require("path");
 const multer = require("multer");
 require("dotenv").config();
-const db = require("./db");
 
 const app = express();
+// Khôi phục ảnh (tới 5MB/ảnh, base64 ~6.7MB) cần giới hạn riêng cao hơn. Phải đặt TRƯỚC bộ đọc 2MB chung bên dưới.
 app.use("/api/restore-image", express.json({ limit: "12mb" }));
 app.use(express.json({ limit: "2mb" }));
 app.use(express.static(path.join(__dirname, "public")));
@@ -36,8 +36,21 @@ const ZALO_APP_ID = process.env.ZALO_APP_ID;
 const ZALO_APP_SECRET = process.env.ZALO_APP_SECRET;
 const ZALO_CALLBACK_URL = process.env.ZALO_CALLBACK_URL;
 
+const DATA_DIR = path.join(__dirname, "data");
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
+
+const UPLOADS_DIR = path.join(DATA_DIR, "uploads");
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR);
+app.use("/uploads", express.static(UPLOADS_DIR));
+
 const upload = multer({
-  storage: multer.memoryStorage(), // giữ ảnh trong RAM rồi ghi vào DB (không phụ thuộc ổ đĩa của Render)
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, UPLOADS_DIR),
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname || "").slice(0, 10);
+      cb(null, `${Date.now()}-${crypto.randomBytes(4).toString("hex")}${ext}`);
+    },
+  }),
   limits: { fileSize: 5 * 1024 * 1024 }, // tối đa 5MB mỗi ảnh
   fileFilter: (req, file, cb) => {
     if (!/^image\//.test(file.mimetype)) return cb(new Error("Chỉ chấp nhận file ảnh (jpg, png, gif, webp...)."));
@@ -45,29 +58,22 @@ const upload = multer({
   },
 });
 
-// Lưu 1 giá trị JSON vào kho dữ liệu bền vững (Postgres) — dùng await để chắc chắn đã ghi xong.
-async function persist(key, data) {
+const KB_FILE = path.join(DATA_DIR, "kb.json");
+const SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
+const ESCALATIONS_FILE = path.join(DATA_DIR, "escalations.json");
+const TOKEN_FILE = path.join(DATA_DIR, "zalo-tokens.json");
+const ZALO_CONFIG_FILE = path.join(DATA_DIR, "zalo-config.json");
+
+function readJson(file, fallback) {
   try {
-    await db.setJson(key, data);
+    return JSON.parse(fs.readFileSync(file, "utf8"));
   } catch (e) {
-    console.error(`Lỗi khi lưu "${key}":`, e.message);
-    throw e;
+    return fallback;
   }
 }
-
-// Phục vụ ảnh đã tải lên: đọc từ DB (hoặc từ đĩa nếu chưa cấu hình DATABASE_URL)
-app.get("/uploads/:filename", async (req, res) => {
-  try {
-    const img = await db.getImage(path.basename(req.params.filename));
-    if (!img) return res.status(404).send("Không tìm thấy ảnh.");
-    res.set("Content-Type", img.mime);
-    res.set("Cache-Control", "public, max-age=86400");
-    res.send(img.data);
-  } catch (e) {
-    console.error(e.message);
-    res.status(500).send("Lỗi đọc ảnh.");
-  }
-});
+function writeJson(file, data) {
+  fs.writeFileSync(file, JSON.stringify(data, null, 2));
+}
 
 const CATEGORIES = [
   { id: "HD", label: "Hướng dẫn thao tác" },
@@ -110,7 +116,88 @@ const DEFAULT_GREETING =
   "Chào bạn, tôi là chatbot hỗ trợ phần mềm. Hãy đặt câu hỏi, tôi sẽ trả lời dựa trên tài liệu hướng dẫn đã được nạp.";
 const ESCALATION_MARKER = "[CẦN_CHUYÊN_GIA]";
 
-const DEFAULT_KB = {
+// ---------- Tự nạp lại dữ liệu từ file sao lưu nằm sẵn trong GitHub ----------
+// Gói Free của Render xoá sạch thư mục data/ mỗi khi server ngủ hoặc khởi động lại. Để khỏi phải
+// tải file sao lưu lên bằng tay mỗi lần, hãy đưa file sao lưu (tải ở tab Cài đặt) vào THƯ MỤC GỐC
+// của repo GitHub, cạnh server.js. Mỗi lần server khởi động mà chưa có dữ liệu (data/kb.json chưa
+// tồn tại), nó tự đọc file đó và khôi phục tài liệu + cài đặt + ảnh. Nếu server vẫn còn dữ liệu
+// (VD đã gắn ổ đĩa bền vững) thì KHÔNG ghi đè.
+//   - Ưu tiên 1: file tên đúng "seed-backup.json"
+//   - Ưu tiên 2: file "sao-luu-du-lieu-chatbot-*.json" có dấu thời gian MỚI NHẤT trong tên
+//     (VD ...-2026-09-09-10-00.json) — nhờ vậy không cần đổi tên file tải về.
+const SEED_EXPLICIT_NAME = "seed-backup.json";
+const SEED_PATTERN = /^sao-luu-du-lieu-chatbot-.*\.json$/i;
+
+function findSeedFile() {
+  const explicit = path.join(__dirname, SEED_EXPLICIT_NAME);
+  if (fs.existsSync(explicit)) return explicit;
+  let names = [];
+  try {
+    names = fs.readdirSync(__dirname).filter((n) => SEED_PATTERN.test(n));
+  } catch (e) {
+    return null;
+  }
+  if (names.length === 0) return null;
+  // File do app tạo ra có dấu thời gian YYYY-MM-DD-HH-mm ở cuối tên -> chọn file có thời gian MỚI NHẤT.
+  // File không có dấu thời gian (VD tự đặt tên) chỉ được dùng khi KHÔNG có file nào có dấu thời gian,
+  // để 1 file đặt tên tay không "thắng mãi" các bản sao lưu mới hơn.
+  const stamp = (n) => {
+    const m = /(\d{4}-\d{2}-\d{2}-\d{2}-\d{2})\.json$/i.exec(n);
+    return m ? m[1] : null;
+  };
+  const stamped = names.filter((n) => stamp(n)).sort((a, b) => stamp(a).localeCompare(stamp(b)));
+  if (stamped.length > 0) return path.join(__dirname, stamped[stamped.length - 1]);
+  names.sort();
+  return path.join(__dirname, names[names.length - 1]);
+}
+
+const seedStatus = { found: false, file: null, restored: false, entries: 0, images: 0, at: null, error: null };
+
+function restoreFromSeedIfFresh() {
+  const file = findSeedFile();
+  seedStatus.found = !!file;
+  seedStatus.file = file ? path.basename(file) : null;
+  if (!file) return;
+  if (fs.existsSync(KB_FILE)) return; // đang còn dữ liệu -> giữ nguyên, không đè
+  try {
+    const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
+    const entries = parsed && parsed.kb && parsed.kb.entries;
+    if (!Array.isArray(entries)) throw new Error("File sao lưu không đúng định dạng (thiếu kb.entries).");
+
+    let imageCount = 0;
+    const images = parsed.uploadedImages && typeof parsed.uploadedImages === "object" ? parsed.uploadedImages : {};
+    for (const p of Object.keys(images)) {
+      try {
+        const m = /^data:image\/[a-zA-Z0-9.+-]+;base64,([\s\S]+)$/.exec(String(images[p] || ""));
+        const filename = path.basename(String(p)); // chỉ lấy tên file, chống ghi ra ngoài thư mục uploads
+        if (!m || !String(p).startsWith("/uploads/")) continue;
+        if (!/^[A-Za-z0-9._-]+$/.test(filename) || filename === "." || filename === "..") continue;
+        fs.writeFileSync(path.join(UPLOADS_DIR, filename), Buffer.from(m[1], "base64"));
+        imageCount++;
+      } catch (e) {
+        // bỏ qua 1 ảnh lỗi, vẫn khôi phục phần còn lại
+      }
+    }
+    if (parsed.settings && typeof parsed.settings === "object") writeJson(SETTINGS_FILE, parsed.settings);
+    // Ghi kb.json CUỐI CÙNG: nếu giữa chừng bị lỗi thì kb.json chưa có -> lần khởi động sau tự thử lại.
+    writeJson(KB_FILE, { entries });
+
+    seedStatus.restored = true;
+    seedStatus.entries = entries.length;
+    seedStatus.images = imageCount;
+    seedStatus.at = new Date().toISOString();
+    console.log(`[seed] Đã tự khôi phục ${entries.length} mục + ${imageCount} ảnh từ ${seedStatus.file}`);
+  } catch (e) {
+    seedStatus.error =
+      e instanceof SyntaxError
+        ? "File không phải JSON hợp lệ (có thể bị hỏng khi tải lên GitHub). Hãy tải lại file sao lưu từ tab Cài đặt rồi upload lại."
+        : e.message || String(e);
+    console.error(`[seed] Không nạp được ${seedStatus.file}: ${seedStatus.error}`);
+  }
+}
+restoreFromSeedIfFresh();
+
+let kb = readJson(KB_FILE, {
   entries: [
     {
       id: "seed-1",
@@ -120,8 +207,11 @@ const DEFAULT_KB = {
         "Vào trang đăng nhập > bấm 'Quên mật khẩu' > nhập email đã đăng ký > làm theo hướng dẫn trong email.",
     },
   ],
-};
-let kb, settings, escalations, zaloTokens, zaloConfig; // được nạp từ DB trong hàm start() ở cuối file
+});
+let settings = readJson(SETTINGS_FILE, { greeting: DEFAULT_GREETING, expertEmail: "" });
+let escalations = readJson(ESCALATIONS_FILE, []);
+let zaloTokens = readJson(TOKEN_FILE, null);
+let zaloConfig = readJson(ZALO_CONFIG_FILE, { expertUserId: null, recentSenders: [] });
 
 // ---------- Khoá đơn giản cho các thao tác ghi/sửa dữ liệu dùng chung ----------
 function requireAdmin(req, res, next) {
@@ -133,40 +223,333 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+// ================= THU THẬP CÂU HỎI CHATBOT CHƯA TRẢ LỜI ĐƯỢC =================
+// Tự động ghi lại câu hỏi mà chatbot không đáp ứng được để chuyên gia biết cần bổ sung tài liệu gì.
+// Mỗi bản ghi = 1 "câu hỏi" (đã gộp các cách hỏi giống nhau) kèm số lần hỏi và lý do:
+//   nomatch     : tài liệu không có mục nào khớp
+//   ambiguous   : có vài mục gần giống, người dùng bấm "không mục nào đúng ý"
+//   kb_dislike  : đã trả lời từ tài liệu nhưng người dùng bấm "Chưa đúng ý bạn?"
+//   ai_answered : sau đó AI trả lời được (kèm bản nháp để chuyên gia tham khảo)
+//   ai_unknown  : AI cũng báo không có thông tin
+//   escalated   : người dùng đã chuyển câu hỏi cho chuyên gia
+// Quyền riêng tư: KHÔNG lưu IP hay định danh người hỏi — chỉ lưu nội dung câu hỏi.
+const UNANSWERED_FILE = path.join(DATA_DIR, "unanswered.json");
+const UNANSWERED_MAX = Number(process.env.UNANSWERED_MAX) || 2000; // tối đa số bản ghi giữ lại
+const UNANSWERED_WEBHOOK_URL = process.env.UNANSWERED_WEBHOOK_URL || ""; // nơi lưu bền vững (VD Google Sheet)
+const UNANSWERED_WEBHOOK_SECRET = process.env.UNANSWERED_WEBHOOK_SECRET || "";
+const SERVER_STARTED_AT = new Date().toISOString();
+const MAX_QUESTION_LEN = 300;
+const MAX_SAMPLES = 8;
+const KEEP_CLOSED_DAYS = 90; // bản ghi đã xử lý/bỏ qua quá 90 ngày sẽ tự dọn
+const UNANSWERED_TRIGGERS = ["nomatch", "ambiguous", "kb_dislike"];
+const UNANSWERED_OUTCOMES = ["ai_answered", "ai_unknown", "escalated"];
+const UNANSWERED_STATUSES = ["new", "resolved", "ignored"];
+
+// Bản sao thuật toán chuẩn hoá của giao diện (index.html) — giữ giống nhau để gộp câu hỏi cùng cách.
+const VN_STOPWORDS = new Set([
+  "la","cua","va","cac","nhung","co","duoc","the","nao","cho","de","khi","toi","ban","minh",
+  "lam","sao","gi","nhu","nay","do","mot","voi","ve","tai","hay","hoac","da","se","phai","can",
+  "muon","xin","vay","oi","nhe","trong","o","ra","vao","den","neu","thi","ma","hon",
+  "nhat","nen","bi","bang","theo",
+]);
+function normalizeVN(str) {
+  return String(str || "")
+    .toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+function tokenizeVN(str) {
+  return normalizeVN(str).split(" ").filter((w) => w && w.length > 1 && !VN_STOPWORDS.has(w));
+}
+function questionKey(q) {
+  const toks = [...new Set(tokenizeVN(q))].sort(); // sắp xếp để đảo thứ tự từ vẫn coi là cùng câu hỏi
+  return toks.length ? toks.join(" ") : normalizeVN(q);
+}
+function cleanQuestion(raw) {
+  if (typeof raw !== "string") return "";
+  const q = raw.replace(/[\u0000-\u001F\u007F]/g, " ").replace(/\s+/g, " ").trim().slice(0, MAX_QUESTION_LEN);
+  return /[\p{L}\p{N}]/u.test(q) ? q : ""; // phải có ít nhất 1 chữ/số
+}
+
+let unanswered = readJson(UNANSWERED_FILE, []);
+if (!Array.isArray(unanswered)) unanswered = [];
+
+let unansweredTimer = null;
+let unansweredDirty = false;
+function flushUnanswered() {
+  if (unansweredTimer) {
+    clearTimeout(unansweredTimer);
+    unansweredTimer = null;
+  }
+  if (!unansweredDirty) return;
+  unansweredDirty = false;
+  try {
+    writeJson(UNANSWERED_FILE, unanswered);
+  } catch (e) {
+    console.error("[unanswered] Không ghi được file:", e.message);
+  }
+}
+function scheduleUnansweredSave() {
+  unansweredDirty = true;
+  if (!unansweredTimer) unansweredTimer = setTimeout(flushUnanswered, 1500); // gom nhiều sự kiện vào 1 lần ghi
+}
+process.on("exit", flushUnanswered);
+for (const sig of ["SIGTERM", "SIGINT"]) {
+  process.on(sig, () => {
+    flushUnanswered();
+    process.exit(0);
+  });
+}
+
+// Tìm bản ghi cùng ý: trùng khoá, hoặc giống ≥ 75% (Jaccard theo tập từ khoá, cần ≥ 2 từ).
+function findUnansweredRecord(key) {
+  const exact = unanswered.find((r) => r.key === key);
+  if (exact) return exact;
+  const toks = key.split(" ");
+  if (toks.length < 2) return null;
+  const set = new Set(toks);
+  let best = null;
+  let bestSim = 0;
+  for (const r of unanswered) {
+    const rt = r.key.split(" ");
+    if (rt.length < 2) continue;
+    let inter = 0;
+    for (const t of rt) if (set.has(t)) inter++;
+    const sim = inter / (set.size + rt.length - inter);
+    if (sim >= 0.75 && sim > bestSim) {
+      best = r;
+      bestSim = sim;
+    }
+  }
+  return best;
+}
+
+function trimUnanswered(keep) {
+  const cutoff = Date.now() - KEEP_CLOSED_DAYS * 86400000;
+  unanswered = unanswered.filter((r) => r === keep || r.status === "new" || new Date(r.lastAt).getTime() > cutoff);
+  if (unanswered.length <= UNANSWERED_MAX) return;
+  // Quá giới hạn: bỏ trước các bản ghi đã xử lý/bỏ qua, rồi tới câu mới ít người hỏi nhất & cũ nhất.
+  const others = unanswered.filter((r) => r !== keep);
+  const rank = (r) => (r.status === "new" ? 1 : 0);
+  others.sort((a, b) => rank(a) - rank(b) || a.count - b.count || String(a.lastAt).localeCompare(String(b.lastAt)));
+  others.splice(0, others.length + 1 - UNANSWERED_MAX);
+  unanswered = [...others, keep];
+}
+
+// Gửi từng sự kiện sang nơi lưu bền vững (nếu có cấu hình) — chạy nền, lỗi không ảnh hưởng người dùng.
+const webhookQueue = [];
+let webhookBusy = false;
+let webhookFailures = 0;
+async function pumpWebhook() {
+  if (webhookBusy) return;
+  webhookBusy = true;
+  try {
+    while (webhookQueue.length) {
+      const body = webhookQueue.shift();
+      try {
+        await axios.post(UNANSWERED_WEBHOOK_URL, body, { timeout: 8000, headers: { "Content-Type": "application/json" } });
+      } catch (e) {
+        webhookFailures++;
+        if (webhookFailures <= 5 || webhookFailures % 50 === 0) {
+          console.error(`[unanswered] Gửi webhook lỗi (lần ${webhookFailures}): ${e.message}`);
+        }
+      }
+    }
+  } finally {
+    webhookBusy = false;
+  }
+}
+function sendUnansweredWebhook(payload) {
+  if (!UNANSWERED_WEBHOOK_URL || webhookQueue.length >= 200) return;
+  webhookQueue.push(payload);
+  pumpWebhook();
+}
+
+// Ghi nhận 1 sự kiện. trigger = "lượt hỏi mới" (làm tăng số lần hỏi); outcome = kết quả của lượt đó.
+function logUnanswered({ question, trigger = null, outcome = null, draft = null, nearTitles = [] }) {
+  const q = cleanQuestion(question);
+  if (!q) return null;
+  if (trigger && !UNANSWERED_TRIGGERS.includes(trigger)) trigger = null;
+  if (outcome && !UNANSWERED_OUTCOMES.includes(outcome)) outcome = null;
+  const now = new Date().toISOString();
+  const key = questionKey(q);
+  let rec = findUnansweredRecord(key);
+  const isNew = !rec;
+  if (isNew) {
+    rec = {
+      id: `u${Date.now().toString(36)}${crypto.randomBytes(3).toString("hex")}`,
+      question: q,
+      key,
+      count: 1,
+      firstAt: now,
+      lastAt: now,
+      reasons: { nomatch: 0, ambiguous: 0, kb_dislike: 0, ai_answered: 0, ai_unknown: 0, escalated: 0 },
+      status: "new",
+      samples: [q],
+      draftAnswer: null,
+      nearTitles: [],
+      note: "",
+    };
+    unanswered.push(rec);
+  } else {
+    if (trigger) rec.count++; // chỉ tăng "số lần hỏi" khi là 1 lượt hỏi mới, không tăng khi chỉ cập nhật kết quả
+    rec.lastAt = now;
+    if (!rec.samples.includes(q) && rec.samples.length < MAX_SAMPLES) rec.samples.push(q);
+    if (rec.status === "resolved") {
+      // Đã xử lý rồi mà câu này vẫn không trả lời được -> mở lại để chuyên gia xem lại.
+      rec.status = "new";
+      rec.reopenedAt = now;
+      rec.note = "Mở lại: câu hỏi này vẫn xuất hiện sau khi đã xử lý.";
+    }
+  }
+  if (trigger) rec.reasons[trigger]++;
+  if (outcome) rec.reasons[outcome]++;
+  if (outcome === "ai_answered" && draft) rec.draftAnswer = String(draft).slice(0, 2000);
+  for (const t of Array.isArray(nearTitles) ? nearTitles : []) {
+    const tt = typeof t === "string" ? t.trim().slice(0, 200) : "";
+    if (tt && !rec.nearTitles.includes(tt) && rec.nearTitles.length < 5) rec.nearTitles.push(tt);
+  }
+  trimUnanswered(rec);
+  scheduleUnansweredSave();
+  sendUnansweredWebhook({
+    secret: UNANSWERED_WEBHOOK_SECRET || undefined,
+    event: "unanswered_question",
+    at: now,
+    question: q,
+    trigger,
+    outcome,
+    totalAsked: rec.count,
+    isNewQuestion: isNew,
+    nearTitles: (Array.isArray(nearTitles) ? nearTitles : []).filter((t) => typeof t === "string").slice(0, 5),
+    draftAnswer: outcome === "ai_answered" && draft ? String(draft).slice(0, 2000) : "",
+  });
+  return rec;
+}
+
+// Giới hạn tần suất ghi nhận theo người dùng (để người lạ không làm đầy nhật ký). Không lưu IP, chỉ đếm tạm trong bộ nhớ.
+// Render đứng sau proxy: IP thật là phần tử CUỐI của X-Forwarded-For (phần đầu có thể do người dùng tự điền giả).
+function clientIp(req) {
+  const xff = String(req.headers["x-forwarded-for"] || "").split(",").map((s) => s.trim()).filter(Boolean);
+  return xff.length ? xff[xff.length - 1] : req.socket.remoteAddress || "unknown";
+}
+const eventHits = new Map();
+function allowEvent(req, limit = 40, windowMs = 10 * 60 * 1000) {
+  const ip = clientIp(req);
+  const now = Date.now();
+  const arr = (eventHits.get(ip) || []).filter((t) => now - t < windowMs);
+  if (arr.length >= limit) {
+    eventHits.set(ip, arr);
+    return false;
+  }
+  arr.push(now);
+  eventHits.set(ip, arr);
+  return true;
+}
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, arr] of eventHits) {
+    const fresh = arr.filter((t) => now - t < 10 * 60 * 1000);
+    if (fresh.length) eventHits.set(ip, fresh);
+    else eventHits.delete(ip);
+  }
+}, 10 * 60 * 1000).unref();
+
+// Endpoint công khai: chỉ nhận loại "nomatch" (người dùng gõ câu mà tài liệu không có) — các loại khác do server tự ghi.
+app.post("/api/unanswered", (req, res) => {
+  if (!allowEvent(req)) return res.status(429).json({ ok: false, error: "Quá nhiều yêu cầu, vui lòng thử lại sau." });
+  const rec = logUnanswered({ question: (req.body || {}).question, trigger: "nomatch" });
+  if (!rec) return res.status(400).json({ ok: false, error: "Câu hỏi không hợp lệ." });
+  res.json({ ok: true }); // không trả dữ liệu bản ghi cho người dùng
+});
+
+// Các endpoint dưới đây dành cho chuyên gia (cần mã quản trị nếu đã bật).
+app.get("/api/unanswered", requireAdmin, (req, res) => {
+  const items = unanswered.map(({ key, ...rest }) => rest);
+  res.json({
+    ok: true,
+    items,
+    meta: { startedAt: SERVER_STARTED_AT, webhookConfigured: !!UNANSWERED_WEBHOOK_URL, max: UNANSWERED_MAX, total: items.length },
+  });
+});
+
+app.patch("/api/unanswered/:id", requireAdmin, (req, res) => {
+  const rec = unanswered.find((r) => r.id === req.params.id);
+  if (!rec) return res.status(404).json({ ok: false, error: "Không tìm thấy." });
+  const { status, note } = req.body || {};
+  if (status !== undefined) {
+    if (!UNANSWERED_STATUSES.includes(status)) return res.status(400).json({ ok: false, error: "Trạng thái không hợp lệ." });
+    rec.status = status;
+    if (status === "resolved") rec.resolvedAt = new Date().toISOString();
+  }
+  if (typeof note === "string") rec.note = note.slice(0, 300);
+  scheduleUnansweredSave();
+  res.json({ ok: true });
+});
+
+app.post("/api/unanswered/bulk-status", requireAdmin, (req, res) => {
+  const { ids, status, note } = req.body || {};
+  if (!Array.isArray(ids) || !UNANSWERED_STATUSES.includes(status)) {
+    return res.status(400).json({ ok: false, error: "Dữ liệu không hợp lệ." });
+  }
+  const idSet = new Set(ids.filter((x) => typeof x === "string"));
+  let changed = 0;
+  for (const r of unanswered) {
+    if (!idSet.has(r.id)) continue;
+    r.status = status;
+    if (status === "resolved") r.resolvedAt = new Date().toISOString();
+    if (typeof note === "string") r.note = note.slice(0, 300);
+    changed++;
+  }
+  if (changed) scheduleUnansweredSave();
+  res.json({ ok: true, changed });
+});
+
+app.delete("/api/unanswered/:id", requireAdmin, (req, res) => {
+  const before = unanswered.length;
+  unanswered = unanswered.filter((r) => r.id !== req.params.id);
+  if (unanswered.length === before) return res.status(404).json({ ok: false, error: "Không tìm thấy." });
+  scheduleUnansweredSave();
+  res.json({ ok: true });
+});
+
+// Dọn nhanh: xoá toàn bộ bản ghi đã xử lý / bỏ qua (?scope=closed)
+app.delete("/api/unanswered", requireAdmin, (req, res) => {
+  if (req.query.scope !== "closed") return res.status(400).json({ ok: false, error: "Thiếu scope=closed." });
+  const before = unanswered.length;
+  unanswered = unanswered.filter((r) => r.status === "new");
+  if (unanswered.length !== before) scheduleUnansweredSave();
+  res.json({ ok: true, removed: before - unanswered.length });
+});
+
 // ================= CƠ SỞ TRI THỨC (dùng chung) =================
 // ================= TẢI ẢNH MINH HOẠ LÊN SERVER =================
 app.post("/api/upload-image", requireAdmin, (req, res) => {
-  upload.single("image")(req, res, async (err) => {
+  upload.single("image")(req, res, (err) => {
     if (err) {
       const msg = err.code === "LIMIT_FILE_SIZE" ? "Ảnh vượt quá 5MB." : err.message || "Lỗi khi tải ảnh lên.";
       return res.status(400).json({ ok: false, error: msg });
     }
     if (!req.file) return res.status(400).json({ ok: false, error: "Không nhận được file." });
-    const ext = path.extname(req.file.originalname || "").slice(0, 10);
-    const filename = `${Date.now()}-${crypto.randomBytes(4).toString("hex")}${ext}`;
-    try {
-      await db.saveImage(filename, req.file.mimetype, req.file.buffer);
-      res.json({ ok: true, url: `/uploads/${filename}` });
-    } catch (e) {
-      console.error(e.message);
-      res.status(500).json({ ok: false, error: "Không lưu được ảnh vào cơ sở dữ liệu." });
-    }
+    res.json({ ok: true, url: `/uploads/${req.file.filename}` });
   });
 });
 
 // Ghi lại file ảnh lên server từ dữ liệu base64 trong file sao lưu (dùng khi Khôi phục,
 // vì file sao lưu chỉ có thể chứa dữ liệu ảnh, không thể tự ghi vào ổ đĩa server).
-app.post("/api/restore-image", requireAdmin, async (req, res) => {
+app.post("/api/restore-image", requireAdmin, (req, res) => {
   const { path: relPath, dataUrl } = req.body || {};
   if (!relPath || typeof relPath !== "string" || !relPath.startsWith("/uploads/")) {
     return res.status(400).json({ ok: false, error: "Đường dẫn ảnh không hợp lệ." });
   }
-  const matches = /^data:(image\/[a-zA-Z0-9.+-]+);base64,([\s\S]+)$/.exec(dataUrl || "");
+  const matches = /^data:image\/[a-zA-Z0-9.+-]+;base64,([\s\S]+)$/.exec(dataUrl || "");
   if (!matches) return res.status(400).json({ ok: false, error: "Dữ liệu ảnh không hợp lệ." });
   const filename = path.basename(relPath); // chống path traversal, chỉ lấy tên file
   try {
-    const buffer = Buffer.from(matches[2], "base64");
-    await db.saveImage(filename, matches[1], buffer);
+    const buffer = Buffer.from(matches[1], "base64");
+    fs.writeFileSync(path.join(UPLOADS_DIR, filename), buffer);
     res.json({ ok: true, url: `/uploads/${filename}` });
   } catch (e) {
     res.status(500).json({ ok: false, error: "Không ghi được file ảnh lên server." });
@@ -178,16 +561,21 @@ app.get("/api/kb", (req, res) => {
 });
 
 // Ghi đè toàn bộ danh sách (dùng khi thêm/xoá 1 mục từ giao diện)
-app.put("/api/kb", requireAdmin, async (req, res) => {
+// Cho giao diện (tab Cài đặt) biết server vừa tự nạp lại dữ liệu từ file sao lưu trong GitHub hay chưa.
+app.get("/api/seed-status", (req, res) => {
+  res.json({ ok: true, ...seedStatus });
+});
+
+app.put("/api/kb", requireAdmin, (req, res) => {
   const { entries } = req.body;
   if (!Array.isArray(entries)) return res.status(400).json({ ok: false, error: "Thiếu entries" });
   kb = { entries };
-  await persist("kb", kb);
+  writeJson(KB_FILE, kb);
   res.json({ ok: true, kb });
 });
 
 // Nhập hàng loạt (dán tay hoặc từ Excel) — nối thêm vào danh sách hiện có
-app.post("/api/kb/import", requireAdmin, async (req, res) => {
+app.post("/api/kb/import", requireAdmin, (req, res) => {
   const { entries } = req.body;
   if (!Array.isArray(entries) || entries.length === 0) {
     return res.status(400).json({ ok: false, error: "Không có dữ liệu để nhập." });
@@ -202,7 +590,7 @@ app.post("/api/kb/import", requireAdmin, async (req, res) => {
     aliases: Array.isArray(e.aliases) ? e.aliases.map((a) => String(a || "").trim()).filter(Boolean) : [],
   }));
   kb = { entries: [...withIds, ...kb.entries] };
-  await persist("kb", kb);
+  writeJson(KB_FILE, kb);
   res.json({ ok: true, added: withIds.length, kb });
 });
 
@@ -266,13 +654,13 @@ app.get("/api/settings", (req, res) => {
   res.json(settings);
 });
 
-app.put("/api/settings", requireAdmin, async (req, res) => {
+app.put("/api/settings", requireAdmin, (req, res) => {
   const { greeting, expertEmail } = req.body;
   settings = {
     greeting: greeting !== undefined ? greeting : settings.greeting,
     expertEmail: expertEmail !== undefined ? expertEmail : settings.expertEmail,
   };
-  await persist("settings", settings);
+  writeJson(SETTINGS_FILE, settings);
   res.json({ ok: true, settings });
 });
 
@@ -281,9 +669,9 @@ app.get("/api/escalations", (req, res) => {
   res.json(escalations);
 });
 
-app.delete("/api/escalations/:id", requireAdmin, async (req, res) => {
+app.delete("/api/escalations/:id", requireAdmin, (req, res) => {
   escalations = escalations.filter((t) => t.id !== req.params.id);
-  await persist("escalations", escalations);
+  writeJson(ESCALATIONS_FILE, escalations);
   res.json({ ok: true });
 });
 
@@ -355,6 +743,24 @@ ${kbText || "(Chưa có tài liệu nào được nạp.)"}
     const needsEscalation = rawText.includes(ESCALATION_MARKER);
     const cleanText = rawText.replace(ESCALATION_MARKER, "").trim();
 
+    // Tự động ghi nhận câu hỏi chatbot chưa đáp ứng được (không ảnh hưởng gì tới câu trả lời trả về).
+    try {
+      const lastUser = [...history].reverse().find((m) => m && m.role === "user" && typeof m.text === "string");
+      const ctx = ["nomatch", "ambiguous", "kb"].includes(req.body.context) ? req.body.context : null;
+      // Không biết ngữ cảnh mà AI trả lời bình thường -> không coi là "chưa trả lời được".
+      if (lastUser && (ctx || needsEscalation) && allowEvent(req)) {
+        logUnanswered({
+          question: lastUser.text,
+          trigger: ctx === "ambiguous" ? "ambiguous" : ctx === "kb" ? "kb_dislike" : null,
+          outcome: needsEscalation ? "ai_unknown" : "ai_answered",
+          draft: needsEscalation ? null : cleanText,
+          nearTitles: Array.isArray(req.body.shownTitles) ? req.body.shownTitles : [],
+        });
+      }
+    } catch (e) {
+      console.error("[unanswered] Lỗi ghi nhận:", e.message);
+    }
+
     res.json({ ok: true, text: cleanText, needsEscalation });
   } catch (err) {
     const anthropicError = err.response?.data?.error;
@@ -417,7 +823,7 @@ app.get("/oauth/callback", async (req, res) => {
       { headers: { "Content-Type": "application/x-www-form-urlencoded", secret_key: ZALO_APP_SECRET } }
     );
     zaloTokens = { ...response.data, obtained_at: Date.now() };
-    await persist("zalo-tokens", zaloTokens);
+    writeJson(TOKEN_FILE, zaloTokens);
     res.send("✅ Đã lấy access_token Zalo OA thành công. Bạn có thể đóng tab này.");
   } catch (err) {
     console.error(err.response?.data || err.message);
@@ -438,7 +844,7 @@ async function refreshZaloToken() {
       { headers: { "Content-Type": "application/x-www-form-urlencoded", secret_key: ZALO_APP_SECRET } }
     );
     zaloTokens = { ...zaloTokens, ...response.data, obtained_at: Date.now() };
-    await persist("zalo-tokens", zaloTokens);
+    writeJson(TOKEN_FILE, zaloTokens);
     console.log("🔄 Đã làm mới Zalo access_token lúc", new Date().toLocaleString("vi-VN"));
   } catch (err) {
     console.error("Lỗi làm mới Zalo token:", err.response?.data || err.message);
@@ -453,7 +859,7 @@ async function getValidZaloToken() {
   return zaloTokens.access_token;
 }
 
-app.post("/webhook", async (req, res) => {
+app.post("/webhook", (req, res) => {
   const event = req.body;
   const senderId = event?.sender?.id;
   if (senderId) {
@@ -461,7 +867,7 @@ app.post("/webhook", async (req, res) => {
       { user_id: senderId, at: new Date().toISOString() },
       ...(zaloConfig.recentSenders || []).filter((s) => s.user_id !== senderId),
     ].slice(0, 20);
-    await persist("zalo-config", zaloConfig);
+    writeJson(ZALO_CONFIG_FILE, zaloConfig);
   }
   res.sendStatus(200);
 });
@@ -470,11 +876,11 @@ app.get("/admin/recent-senders", requireAdmin, (req, res) => {
   res.json(zaloConfig.recentSenders || []);
 });
 
-app.put("/admin/expert", requireAdmin, async (req, res) => {
+app.put("/admin/expert", requireAdmin, (req, res) => {
   const { userId } = req.body;
   if (!userId) return res.status(400).json({ error: "Thiếu userId" });
   zaloConfig.expertUserId = userId;
-  await persist("zalo-config", zaloConfig);
+  writeJson(ZALO_CONFIG_FILE, zaloConfig);
   res.json({ ok: true, expertUserId: userId });
 });
 
@@ -490,6 +896,7 @@ app.post("/api/escalate", async (req, res) => {
   }
 
   const ticket = { id: `${Date.now()}`, question, timestamp: new Date().toISOString(), sentVia: "chưa gửi được" };
+  if (allowEvent(req)) logUnanswered({ question, outcome: "escalated" });
 
   let sentVia = null;
   let errorText = "";
@@ -517,33 +924,20 @@ app.post("/api/escalate", async (req, res) => {
 
   ticket.sentVia = sentVia || "chưa gửi được";
   escalations = [ticket, ...escalations];
-  await persist("escalations", escalations);
+  writeJson(ESCALATIONS_FILE, escalations);
 
   res.json({ ok: !!sentVia, sentVia, error: sentVia ? undefined : errorText || "Chưa cấu hình Zalo OA cho chuyên gia." });
 });
 
 app.get("/health", (req, res) => res.json({ ok: true }));
 
-async function start() {
-  await db.init();
-  kb = await db.getJson("kb", DEFAULT_KB);
-  settings = await db.getJson("settings", { greeting: DEFAULT_GREETING, expertEmail: "" });
-  escalations = await db.getJson("escalations", []);
-  zaloTokens = await db.getJson("zalo-tokens", null);
-  zaloConfig = await db.getJson("zalo-config", { expertUserId: null, recentSenders: [] });
-
-  app.listen(PORT, () => {
-    console.log(`🚀 Website chatbot hỗ trợ đang chạy tại http://localhost:${PORT}`);
-    setInterval(async () => {
-      if (!zaloTokens) return;
-      const ageSeconds = (Date.now() - zaloTokens.obtained_at) / 1000;
-      const expiresIn = Number(zaloTokens.expires_in || 3600);
-      if (ageSeconds > expiresIn - 600) await refreshZaloToken();
-    }, 5 * 60 * 1000);
-  });
-}
-
-start().catch((e) => {
-  console.error("Không khởi động được server:", e.message);
-  process.exit(1);
+app.listen(PORT, () => {
+  if (unanswered.length) console.log(`[unanswered] Đang có ${unanswered.length} câu hỏi chưa trả lời được ghi nhận.`);
+  console.log(`🚀 Website chatbot hỗ trợ đang chạy tại http://localhost:${PORT}`);
+  setInterval(async () => {
+    if (!zaloTokens) return;
+    const ageSeconds = (Date.now() - zaloTokens.obtained_at) / 1000;
+    const expiresIn = Number(zaloTokens.expires_in || 3600);
+    if (ageSeconds > expiresIn - 600) await refreshZaloToken();
+  }, 5 * 60 * 1000);
 });
