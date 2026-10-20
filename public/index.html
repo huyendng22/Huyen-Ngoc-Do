@@ -342,6 +342,16 @@ const KB_MATCH_THRESHOLD = 0.35;
 // nhiều cho 1 chatbot hỗ trợ nghiệp vụ đánh giá công chức.
 const KB_MATCH_MIN_MARGIN = 0.05;
 
+// Nhãn lý do cho tab "Câu hỏi chưa trả lời" (khớp với các lý do server ghi nhận).
+const UNANSWERED_REASON_LABELS = {
+  nomatch: "Tài liệu không có",
+  ambiguous: "Có nhiều mục gần giống, không mục nào đúng ý",
+  kb_dislike: "Bấm \"Chưa đúng ý bạn?\" sau khi được trả lời",
+  ai_answered: "AI trả lời được",
+  ai_unknown: "AI cũng không trả lời được",
+  escalated: "Đã chuyển chuyên gia",
+};
+
 function App() {
   function renderMessageContent(text) {
     return renderFormattedBlock(text, "msg", setLightboxSrc);
@@ -379,6 +389,7 @@ function App() {
 
   const backupInputRef = useRef(null);
   const [backupResult, setBackupResult] = useState(null);
+  const [seedStatus, setSeedStatus] = useState(null);
   const [backingUp, setBackingUp] = useState(false);
   const [restoringBackup, setRestoringBackup] = useState(false);
 
@@ -390,13 +401,185 @@ function App() {
 
   const [escalations, setEscalations] = useState([]);
 
+  // Câu hỏi chatbot chưa trả lời được (server tự thu thập)
+  const [unanswered, setUnanswered] = useState([]);
+  const [unansweredMeta, setUnansweredMeta] = useState(null);
+  const [unansweredError, setUnansweredError] = useState("");
+  const [unansweredLoading, setUnansweredLoading] = useState(false);
+  const [unansweredFilter, setUnansweredFilter] = useState("open");
+  const [unansweredNote, setUnansweredNote] = useState(null); // { ok, message }
+  const [fromUnanswered, setFromUnanswered] = useState(null); // { id, question, withDraft } khi đang tạo mục từ câu hỏi
+  const unansweredBlockedRef = useRef(false); // true khi lần tải gần nhất bị 401 (chưa có mã quản trị) -> ngừng tự làm mới
+
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef(null);
 
-  useEffect(() => { loadKb(); loadSettings(); loadEscalations(); }, []);
+  useEffect(() => { loadKb(); loadSettings(); loadEscalations(); loadSeedStatus(); loadUnanswered(); }, []);
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [messages, loading]);
+  // Cập nhật ngầm số câu hỏi chưa xử lý trên nhãn tab (người dùng khác có thể vừa hỏi những câu mới).
+  useEffect(() => {
+    const id = setInterval(() => loadUnanswered(true), 60000);
+    return () => clearInterval(id);
+  }, [adminToken]);
+
+  // Cho biết server vừa tự nạp lại dữ liệu từ file sao lưu nằm trong GitHub hay chưa (hiện ở tab Cài đặt).
+  async function loadSeedStatus() {
+    try {
+      const r = await fetch("/api/seed-status");
+      const d = await r.json();
+      if (d && d.ok) setSeedStatus(d);
+    } catch (e) {}
+  }
+
+  // ===== Câu hỏi chưa trả lời được =====
+  const NEED_TOKEN_MSG = "Cần nhập đúng mã quản trị (ô cuối tab Cài đặt) để xem và xử lý danh sách này.";
+
+  // Ghi nhận ngầm 1 câu mà tài liệu không có (không chặn, không báo lỗi cho người dùng nếu thất bại).
+  function logNoMatch(question) {
+    try {
+      fetch("/api/unanswered", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question }) })
+        .then(() => loadUnanswered(true))
+        .catch(() => {});
+    } catch (e) {}
+  }
+
+  // silent=true: làm mới ngầm (cập nhật số đếm trên tab), không hiện vòng xoay, và bỏ qua nếu trước đó bị 401.
+  async function loadUnanswered(silent) {
+    if (silent === true && unansweredBlockedRef.current) return;
+    if (silent !== true) setUnansweredLoading(true);
+    try {
+      const r = await fetch("/api/unanswered", { headers: authHeaders(adminToken) });
+      if (r.status === 401) {
+        unansweredBlockedRef.current = true;
+        setUnanswered([]);
+        setUnansweredError(NEED_TOKEN_MSG);
+        return;
+      }
+      unansweredBlockedRef.current = false;
+      const d = await r.json();
+      if (d && d.ok) {
+        setUnanswered(d.items || []);
+        setUnansweredMeta(d.meta || null);
+        setUnansweredError("");
+      } else {
+        setUnansweredError((d && d.error) || "Không tải được danh sách.");
+      }
+    } catch (e) {
+      if (silent !== true) setUnansweredError("Lỗi kết nối khi tải danh sách.");
+    } finally {
+      if (silent !== true) setUnansweredLoading(false);
+    }
+  }
+
+  async function updateUnanswered(id, status, note) {
+    try {
+      const r = await fetch(`/api/unanswered/${id}`, { method: "PATCH", headers: authHeaders(adminToken), body: JSON.stringify({ status, note }) });
+      if (r.status === 401) { setUnansweredError(NEED_TOKEN_MSG); return false; }
+    } catch (e) {
+      setUnansweredError("Lỗi kết nối.");
+      return false;
+    }
+    await loadUnanswered();
+    return true;
+  }
+
+  async function deleteUnanswered(id) {
+    try {
+      const r = await fetch(`/api/unanswered/${id}`, { method: "DELETE", headers: authHeaders(adminToken) });
+      if (r.status === 401) { setUnansweredError(NEED_TOKEN_MSG); return; }
+    } catch (e) {
+      setUnansweredError("Lỗi kết nối.");
+      return;
+    }
+    await loadUnanswered();
+  }
+
+  async function cleanClosedUnanswered() {
+    if (!window.confirm("Xoá vĩnh viễn tất cả câu hỏi đã xử lý / bỏ qua khỏi danh sách?")) return;
+    try {
+      const r = await fetch("/api/unanswered?scope=closed", { method: "DELETE", headers: authHeaders(adminToken) });
+      if (r.status === 401) { setUnansweredError(NEED_TOKEN_MSG); return; }
+      const d = await r.json();
+      setUnansweredNote({ ok: true, message: `Đã dọn ${d.removed || 0} câu hỏi đã đóng.` });
+    } catch (e) {
+      setUnansweredError("Lỗi kết nối.");
+      return;
+    }
+    await loadUnanswered();
+  }
+
+  // Sau khi bổ sung tài liệu/cách hỏi khác: tự đóng những câu mà chatbot GIỜ ĐÃ trả lời được.
+  async function recheckUnanswered() {
+    const open = unanswered.filter((u) => u.status === "new");
+    const ids = open.filter((u) => matchKb(u.question).type === "confident").map((u) => u.id);
+    if (ids.length === 0) {
+      setUnansweredNote({ ok: true, message: `Đã kiểm tra ${open.length} câu hỏi: chưa có câu nào mà tài liệu hiện tại trả lời được.` });
+      return;
+    }
+    try {
+      const r = await fetch("/api/unanswered/bulk-status", {
+        method: "POST",
+        headers: authHeaders(adminToken),
+        body: JSON.stringify({ ids, status: "resolved", note: "Tự động đóng: tài liệu hiện tại đã trả lời được." }),
+      });
+      if (r.status === 401) { setUnansweredError(NEED_TOKEN_MSG); return; }
+      setUnansweredNote({ ok: true, message: `Đã tự đóng ${ids.length}/${open.length} câu hỏi vì tài liệu hiện tại đã trả lời được.` });
+    } catch (e) {
+      setUnansweredError("Lỗi kết nối.");
+      return;
+    }
+    await loadUnanswered();
+  }
+
+  // Chuyển sang form "Thêm câu hỏi" với câu hỏi (và các cách hỏi khác, bản nháp AI nếu chọn) điền sẵn.
+  function startFromUnanswered(rec, withDraft) {
+    if ((form.title.trim() || form.content.trim()) && !window.confirm("Form thêm mục đang có nội dung chưa lưu. Thay bằng câu hỏi này?")) return;
+    const others = (rec.samples || []).filter((x) => x !== rec.question);
+    const useDraft = !!(withDraft && rec.draftAnswer);
+    setEntryMode("single");
+    setForm({ ...EMPTY_FORM, title: rec.question, aliasesText: others.join("\n"), content: useDraft ? rec.draftAnswer : "" });
+    setNewImageUrlDraft("");
+    setFromUnanswered({ id: rec.id, question: rec.question, withDraft: useDraft });
+    setTab("kb");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  // Xuất Excel đúng định dạng file nhập (cột A-F) để chuyên gia điền câu trả lời rồi nhập lại.
+  function exportUnansweredExcel() {
+    const list = filteredUnanswered;
+    if (list.length === 0) {
+      setUnansweredNote({ ok: false, message: "Không có câu hỏi nào trong danh sách đang lọc để xuất." });
+      return;
+    }
+    const statusLabel = (st) => (st === "resolved" ? "Đã xử lý" : st === "ignored" ? "Bỏ qua" : "Chưa xử lý");
+    const headers = [
+      "Câu hỏi", "Danh mục", "Câu trả lời", "Link Video", "Link ảnh (nhiều ảnh cách nhau bởi |)", "Cách hỏi khác (nhiều cách cách nhau bởi |)",
+      "Số lần hỏi", "Hỏi gần nhất", "Tình trạng", "Bản nháp của AI (chỉ để tham khảo — kiểm tra rồi chép sang cột Câu trả lời)",
+    ];
+    const rows = list.map((u) => [
+      u.question, "", "", "", "", (u.samples || []).filter((x) => x !== u.question).join(" | "),
+      u.count, new Date(u.lastAt).toLocaleString("vi-VN"), statusLabel(u.status), u.draftAnswer || "",
+    ]);
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    ws["!cols"] = [{ wch: 50 }, { wch: 12 }, { wch: 70 }, { wch: 25 }, { wch: 25 }, { wch: 45 }, { wch: 10 }, { wch: 20 }, { wch: 12 }, { wch: 70 }];
+    const wsNote = XLSX.utils.aoa_to_sheet([
+      ["Cách dùng file này"],
+      ["- Điền cột C (Câu trả lời) cho những câu bạn muốn đưa vào tài liệu. Có thể điền thêm Danh mục (HD/LOI/CS/335/KHAC), Link Video, Link ảnh."],
+      ["- Dòng để trống cột C sẽ được BỎ QUA khi nhập (không thêm gì cả)."],
+      ["- Các cột từ G trở đi (số lần hỏi, bản nháp AI...) chỉ để tham khảo, app không đọc khi nhập."],
+      ["- Bản nháp AI có thể sai — hãy kiểm tra kỹ trước khi chép sang cột C."],
+      ["- Điền xong: tab Quản lý tài liệu → Nhập hàng loạt → Nhập file Excel. Sau đó vào tab Câu hỏi chưa trả lời bấm \"Tự đóng câu đã có đáp án\"."],
+    ]);
+    wsNote["!cols"] = [{ wch: 120 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Dữ liệu");
+    XLSX.utils.book_append_sheet(wb, wsNote, "Hướng dẫn");
+    const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
+    XLSX.writeFile(wb, `cau-hoi-chua-tra-loi-${stamp}.xlsx`);
+    setUnansweredNote({ ok: true, message: `Đã xuất ${list.length} câu hỏi. Điền cột C rồi nhập lại bằng "Nhập file Excel".` });
+  }
 
   async function loadKb() {
     try {
@@ -435,7 +618,15 @@ function App() {
     const aliases = aliasesText.split("\n").map((s) => s.trim()).filter(Boolean);
     const entry = { id: String(Date.now()), ...rest, aliases };
     const ok = await saveKbEntries([entry, ...kbEntries]);
-    if (ok) { setForm({ ...EMPTY_FORM }); setNewImageUrlDraft(""); }
+    if (ok) {
+      setForm({ ...EMPTY_FORM });
+      setNewImageUrlDraft("");
+      if (fromUnanswered) {
+        const linkedId = fromUnanswered.id;
+        setFromUnanswered(null);
+        updateUnanswered(linkedId, "resolved", "Đã thêm vào tài liệu");
+      }
+    }
   }
 
   function startEdit(entry) {
@@ -934,7 +1125,7 @@ function App() {
       URL.revokeObjectURL(url);
 
       const n = Object.keys(uploadedImages).length;
-      let message = `Đã tải file sao lưu${n > 0 ? ` (kèm ${n} ảnh đã tải lên)` : ""}.`;
+      let message = `Đã tải file sao lưu${n > 0 ? ` (kèm ${n} ảnh đã tải lên)` : ""}. Hãy upload file này vào thư mục gốc của repo GitHub để server tự nạp lại mỗi lần khởi động.`;
       if (failedImages > 0) {
         message += ` ⚠️ Có ${failedImages} ảnh KHÔNG nhúng được (đã mất khỏi server, có thể do vừa deploy code) — file sao lưu này sẽ không khôi phục lại được (các) ảnh đó. Nếu có bản sao lưu cũ hơn còn ảnh, hãy giữ lại bản đó.`;
       }
@@ -1005,6 +1196,7 @@ function App() {
       const data = await r.json();
       setMessages((prev) => prev.map((m, i) => (i === index ? { ...m, escalating: false, escalated: !!data.ok, escalateError: data.ok ? "" : (data.error || "Chưa gửi được.") } : m)));
       loadEscalations();
+      loadUnanswered(true);
     } catch (e) {
       setMessages((prev) => prev.map((m, i) => (i === index ? { ...m, escalating: false, escalateError: "Lỗi kết nối." } : m)));
     }
@@ -1063,6 +1255,7 @@ function App() {
       return;
     }
 
+    logNoMatch(question);
     setMessages((prev) => [
       ...prev,
       { role: "assistant", source: "nomatch", text: "🔍 Không tìm thấy nội dung phù hợp trong tài liệu đã nạp.", question },
@@ -1097,7 +1290,11 @@ function App() {
         .slice(0, index)
         .filter((m) => !(m.role === "assistant" && (m.source === "nomatch" || m.source === "error" || m.source === "ambiguous")));
       const history = [...priorMessages.map((m) => ({ role: m.role, text: m.text })), { role: "user", text: msg.question }];
-      const r = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ history }) });
+      // Cho server biết câu hỏi này đến từ tình huống nào (để ghi nhận đúng lý do chưa trả lời được).
+      const origin = msg.source === "error" ? (msg.matchedTitle ? "kb" : Array.isArray(msg.candidates) ? "ambiguous" : "nomatch") : msg.source;
+      const context = ["nomatch", "ambiguous", "kb"].includes(origin) ? origin : "nomatch";
+      const shownTitles = origin === "kb" ? [msg.matchedTitle].filter(Boolean) : origin === "ambiguous" ? (msg.candidates || []).map((c) => c.title) : [];
+      const r = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ history, context, shownTitles }) });
       const data = await r.json();
       if (data.ok) {
         setMessages((prev) =>
@@ -1114,12 +1311,34 @@ function App() {
       setMessages((prev) => prev.map((m, i) => (i === index ? { ...m, source: "error", asking: false, text: "Đã có lỗi khi kết nối tới hệ thống trả lời. Vui lòng thử lại." } : m)));
     } finally {
       setLoading(false);
+      loadUnanswered(true); // server vừa ghi nhận kết quả (AI trả lời được / không biết)
     }
   }
 
   function handleKeyDown(e) {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   }
+
+  const reasonCount = (u, k) => (u.reasons && u.reasons[k]) || 0;
+  const needsAttention = (u) => reasonCount(u, "ai_unknown") + reasonCount(u, "escalated") > 0;
+  const unansweredScore = (u) => (u.count || 0) + 2 * (reasonCount(u, "ai_unknown") + reasonCount(u, "escalated"));
+  const unansweredCounts = {
+    open: unanswered.filter((u) => u.status === "new").length,
+    attention: unanswered.filter((u) => u.status === "new" && needsAttention(u)).length,
+    ai_ok: unanswered.filter((u) => u.status === "new" && reasonCount(u, "ai_answered") > 0 && !needsAttention(u)).length,
+    closed: unanswered.filter((u) => u.status !== "new").length,
+    all: unanswered.length,
+  };
+  const openUnansweredCount = unansweredCounts.open;
+  const filteredUnanswered = unanswered
+    .filter((u) => {
+      if (unansweredFilter === "open") return u.status === "new";
+      if (unansweredFilter === "attention") return u.status === "new" && needsAttention(u);
+      if (unansweredFilter === "ai_ok") return u.status === "new" && reasonCount(u, "ai_answered") > 0 && !needsAttention(u);
+      if (unansweredFilter === "closed") return u.status !== "new";
+      return true;
+    })
+    .sort((a, b) => unansweredScore(b) - unansweredScore(a) || String(b.lastAt).localeCompare(String(a.lastAt)));
 
   const filteredEntries = kbEntries.filter((e) => {
     const matchesCategory = filterCategory === "ALL" || e.category === filterCategory;
@@ -1142,6 +1361,7 @@ function App() {
         <div style={{ display: "flex", gap: "4px", background: "rgba(255,255,255,0.08)", borderRadius: "10px", padding: "4px" }}>
           <TabButton active={tab === "kb"} onClick={() => setTab("kb")} label="📚 Quản lý tài liệu" />
           <TabButton active={tab === "chat"} onClick={() => setTab("chat")} label="💬 Chat thử nghiệm" />
+          <TabButton active={tab === "unanswered"} onClick={() => { setTab("unanswered"); loadUnanswered(); }} label={`❓ Chưa trả lời${openUnansweredCount > 0 ? ` (${openUnansweredCount})` : ""}`} />
           <TabButton active={tab === "settings"} onClick={() => setTab("settings")} label="⚙️ Cài đặt" />
         </div>
       </div>
@@ -1169,6 +1389,14 @@ function App() {
               {entryMode === "single" ? (
                 <>
                   <div style={sectionTitle}>📄 Thêm câu hỏi &amp; câu trả lời</div>
+                  {fromUnanswered && (
+                    <div style={{ background: "#FFF9F0", border: "1px solid #F0D9BE", borderRadius: 8, padding: "8px 10px", fontSize: 12.5, color: "#6B6255", lineHeight: 1.6, margin: "6px 0 8px" }}>
+                      ❓ Đang tạo mục từ câu hỏi chưa trả lời: <strong>“{fromUnanswered.question}”</strong>.{" "}
+                      {fromUnanswered.withDraft && <strong>Câu trả lời bên dưới là bản nháp do AI soạn — hãy kiểm tra kỹ trước khi lưu. </strong>}
+                      Sau khi bấm "Thêm vào tài liệu", câu hỏi này sẽ tự được đánh dấu "Đã xử lý".{" "}
+                      <button type="button" onClick={() => setFromUnanswered(null)} style={{ background: "transparent", border: "none", color: "#B5652F", fontWeight: 700, cursor: "pointer", fontSize: 12.5, padding: 0 }}>✕ Bỏ liên kết</button>
+                    </div>
+                  )}
                   <label style={labelStyle}>Câu hỏi</label>
                   <input style={inputStyle} placeholder="VD: Làm sao để tạo phiếu đánh giá KPI?" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
 
@@ -1502,7 +1730,7 @@ function App() {
         ) : tab === "chat" ? (
           <div style={{ width: "100%", maxWidth: 620, ...card, display: "flex", flexDirection: "column", height: 560, padding: 0 }}>
             <div style={{ padding: "10px 20px", borderBottom: "1px solid #EEE9DD", fontSize: 11.5, color: "#8A8272" }}>
-              💡 Chatbot tìm câu trả lời có sẵn trong tài liệu trước (miễn phí, tức thì) — chỉ gọi AI khi bạn chủ động bấm "Hỏi AI".
+              💡 Chatbot tìm câu trả lời có sẵn trong tài liệu trước (miễn phí, tức thì) — chỉ gọi AI khi bạn chủ động bấm "Hỏi AI". Câu hỏi mà chatbot chưa trả lời được sẽ được ghi lại (không kèm thông tin người hỏi) để bổ sung tài liệu.
             </div>
             <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
               {messages.length === 0 && <div style={bubbleAssistant}>{settings.greeting || DEFAULT_GREETING}</div>}
@@ -1573,13 +1801,121 @@ function App() {
               <button onClick={sendMessage} disabled={loading} style={{ ...primaryButtonStyle, width: "auto", margin: 0, padding: "0 16px" }}>➤</button>
             </div>
           </div>
+        ) : tab === "unanswered" ? (
+          <div style={{ width: "100%", maxWidth: 760, display: "flex", flexDirection: "column", gap: 14 }}>
+            <div style={card}>
+              <div style={sectionTitle}>❓ Câu hỏi chatbot chưa trả lời được</div>
+              <div style={{ fontSize: 12.5, color: "#6B6255", lineHeight: 1.6 }}>
+                Chatbot tự ghi lại mỗi câu hỏi mà tài liệu không có, hoặc người dùng thấy chưa đúng ý, hoặc AI cũng không trả lời được. Các cách hỏi giống nhau được gộp lại và đếm số lần — hãy bổ sung tài liệu cho những câu lặp lại nhiều nhất. Câu bạn gõ thử ở tab Chat cũng được ghi nhận; bấm "Bỏ qua" nếu là câu thử.
+              </div>
+              {unansweredMeta && (
+                <div style={{ fontSize: 11.5, lineHeight: 1.6, marginTop: 8, padding: "6px 10px", borderRadius: 8, background: unansweredMeta.webhookConfigured ? "#EAF5EC" : "#FFF9F0", color: unansweredMeta.webhookConfigured ? "#3D7A4E" : "#8A6D00" }}>
+                  {unansweredMeta.webhookConfigured
+                    ? "✅ Mỗi câu hỏi mới cũng được gửi sang nơi lưu bên ngoài (webhook), nên không mất khi server khởi động lại."
+                    : "⚠️ Chưa cấu hình nơi lưu bền vững (biến UNANSWERED_WEBHOOK_URL). Trên gói Free của Render, danh sách này sẽ mất khi server ngủ hoặc khởi động lại — hãy xử lý / tải Excel thường xuyên, hoặc cấu hình lưu sang Google Sheet (xem README)."}
+                  {" "}Server khởi động lúc {unansweredMeta.startedAt ? new Date(unansweredMeta.startedAt).toLocaleString("vi-VN") : "—"}.
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 12 }}>
+                <select value={unansweredFilter} onChange={(e) => setUnansweredFilter(e.target.value)} style={{ ...inputStyle, width: "auto", marginBottom: 0, flex: "1 1 240px" }}>
+                  <option value="open">Chưa xử lý ({unansweredCounts.open})</option>
+                  <option value="attention">Cần chú ý — AI cũng không trả lời được ({unansweredCounts.attention})</option>
+                  <option value="ai_ok">AI trả lời được — nên bổ sung vào tài liệu ({unansweredCounts.ai_ok})</option>
+                  <option value="closed">Đã xử lý / bỏ qua ({unansweredCounts.closed})</option>
+                  <option value="all">Tất cả ({unansweredCounts.all})</option>
+                </select>
+                <button type="button" onClick={loadUnanswered} disabled={unansweredLoading} style={outlineButton}>{unansweredLoading ? "⏳ Đang tải..." : "🔄 Làm mới"}</button>
+                <button type="button" onClick={recheckUnanswered} style={outlineButton} title="Chạy lại tìm kiếm với tài liệu hiện tại, tự đóng những câu đã có đáp án">✅ Tự đóng câu đã có đáp án</button>
+                <button type="button" onClick={exportUnansweredExcel} style={outlineButton} title="Xuất Excel đúng định dạng file nhập: điền câu trả lời rồi nhập lại">📥 Tải Excel</button>
+                {unansweredCounts.closed > 0 && <button type="button" onClick={cleanClosedUnanswered} style={outlineButton}>🧹 Dọn đã xử lý</button>}
+              </div>
+              {unansweredNote && (
+                <div style={{ marginTop: 10, fontSize: 12.5, fontWeight: 600, color: unansweredNote.ok ? "#3D7A4E" : "#B3261E" }}>
+                  {unansweredNote.ok ? "✅ " : "❌ "}{unansweredNote.message}
+                </div>
+              )}
+              {unansweredError && <div style={{ marginTop: 10, fontSize: 12.5, fontWeight: 600, color: "#B3261E" }}>❌ {unansweredError}</div>}
+            </div>
+
+            {!unansweredError && filteredUnanswered.length === 0 && (
+              <div style={{ ...card, textAlign: "center", color: "#8A8272", fontSize: 13 }}>
+                {unansweredFilter === "open" ? "🎉 Hiện chưa có câu hỏi nào cần xử lý." : "Chưa có câu hỏi nào trong mục này."}
+              </div>
+            )}
+
+            {filteredUnanswered.map((u) => {
+              const others = (u.samples || []).filter((x) => x !== u.question);
+              return (
+                <div key={u.id} style={{ ...card, padding: "14px 16px" }}>
+                  <div style={{ fontWeight: 700, fontSize: 14.5, lineHeight: 1.4 }}>{u.question}</div>
+                  <div style={{ fontSize: 11.5, color: "#8A8272", marginTop: 3 }}>
+                    Hỏi <strong>{u.count}</strong> lần · gần nhất {new Date(u.lastAt).toLocaleString("vi-VN")}
+                    {u.status !== "new" && <> · <strong>{u.status === "resolved" ? "Đã xử lý" : "Bỏ qua"}</strong></>}
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                    {Object.keys(UNANSWERED_REASON_LABELS).filter((k) => reasonCount(u, k) > 0).map((k) => {
+                      const warn = k === "ai_unknown" || k === "escalated";
+                      return (
+                        <span key={k} style={{ ...pill, margin: 0, color: warn ? "#B3261E" : "#B5652F", background: warn ? "#FDECEA" : "#F6E9DE" }}>
+                          {UNANSWERED_REASON_LABELS[k]} ×{reasonCount(u, k)}
+                        </span>
+                      );
+                    })}
+                  </div>
+                  {others.length > 0 && <div style={{ fontSize: 12, color: "#6B6255", marginTop: 8 }}>🔀 Các cách hỏi khác: {others.join(" · ")}</div>}
+                  {u.nearTitles && u.nearTitles.length > 0 && <div style={{ fontSize: 12, color: "#6B6255", marginTop: 4 }}>📄 Đã gợi ý nhưng chưa đúng ý: {u.nearTitles.join(" · ")}</div>}
+                  {u.draftAnswer && (
+                    <details style={{ marginTop: 8 }}>
+                      <summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 600, color: "#12303F" }}>🤖 Xem bản nháp do AI soạn (cần kiểm tra trước khi dùng)</summary>
+                      <div style={{ fontSize: 12.5, color: "#4A443B", lineHeight: 1.55, whiteSpace: "pre-wrap", background: "#FCFBF8", border: "1px solid #EEE9DD", borderRadius: 8, padding: 10, marginTop: 6 }}>{u.draftAnswer}</div>
+                    </details>
+                  )}
+                  {u.note && <div style={{ fontSize: 11.5, color: "#8A8272", marginTop: 6 }}>📝 {u.note}</div>}
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                    {u.status === "new" ? (
+                      <>
+                        <button type="button" onClick={() => startFromUnanswered(u, false)} style={{ ...darkButton, height: 32 }}>➕ Tạo mục tài liệu</button>
+                        {u.draftAnswer && <button type="button" onClick={() => startFromUnanswered(u, true)} style={{ ...outlineButton, height: 32 }}>➕ Tạo mục kèm bản nháp AI</button>}
+                        <button type="button" onClick={() => updateUnanswered(u.id, "resolved", "Đã xử lý thủ công")} style={{ ...outlineButton, height: 32 }}>✓ Đã xử lý</button>
+                        <button type="button" onClick={() => updateUnanswered(u.id, "ignored")} style={{ ...outlineButton, height: 32 }}>Bỏ qua</button>
+                      </>
+                    ) : (
+                      <>
+                        <button type="button" onClick={() => updateUnanswered(u.id, "new", "")} style={{ ...outlineButton, height: 32 }}>↩︎ Mở lại</button>
+                        <button type="button" onClick={() => deleteUnanswered(u.id)} style={{ ...outlineButton, height: 32 }}>🗑️ Xoá</button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         ) : (
           <div style={{ width: "100%", maxWidth: 760, display: "flex", flexDirection: "column", gap: 20 }}>
             <div style={{ ...card, border: "1px solid #F0D9BE", background: "#FFF9F0" }}>
               <div style={sectionTitle}>🗄️ Sao lưu &amp; khôi phục dữ liệu</div>
               <div style={{ fontSize: 12.5, color: "#6B6255", lineHeight: 1.6, marginBottom: 12 }}>
-                ⚠️ Dữ liệu (tài liệu, cài đặt, kể cả ảnh đã tải lên) đang lưu trên ổ đĩa tạm của server — <strong>có thể bị mất mỗi khi bạn cập nhật/deploy lại code</strong> (đặc biệt trên gói Free của Render). Hãy bấm <strong>Tải file sao lưu</strong> sau mỗi lần chỉnh sửa tài liệu quan trọng, và <strong>Khôi phục</strong> lại ngay sau khi deploy nếu thấy dữ liệu bị trống.
+                ⚠️ Dữ liệu (tài liệu, cài đặt, ảnh) lưu trên ổ đĩa tạm của server — <strong>gói Free của Render xoá sạch mỗi khi server ngủ hoặc deploy lại</strong>. Để khỏi phải khôi phục thủ công: sau mỗi lần chỉnh sửa quan trọng, bấm <strong>Tải file sao lưu</strong>, rồi <strong>upload file đó vào thư mục gốc của repo GitHub</strong> (cạnh server.js). Mỗi lần khởi động, server tự nạp lại từ file sao lưu mới nhất. Chỉnh sửa chưa được đưa lên GitHub sẽ mất khi server khởi động lại. Nút <strong>Khôi phục</strong> bên dưới vẫn dùng được khi cần khôi phục bằng tay.
               </div>
+              {seedStatus && (
+                <div
+                  style={{
+                    fontSize: 12.5, lineHeight: 1.6, marginBottom: 12, padding: "8px 10px", borderRadius: 8,
+                    background: seedStatus.error ? "#FDECEA" : seedStatus.restored ? "#EAF5EC" : "#F3F1EC",
+                    color: seedStatus.error ? "#B3261E" : seedStatus.restored ? "#3D7A4E" : "#6B6255",
+                  }}
+                >
+                  {seedStatus.error ? (
+                    <>❌ Không nạp được file <strong>{seedStatus.file}</strong>: {seedStatus.error}</>
+                  ) : seedStatus.restored ? (
+                    <>✅ Lần khởi động này server đã tự nạp lại <strong>{seedStatus.entries} mục + {seedStatus.images} ảnh</strong> từ file <strong>{seedStatus.file}</strong> (lúc {new Date(seedStatus.at).toLocaleString("vi-VN")}). Chỉnh sửa sau thời điểm tạo file này sẽ mất nếu server khởi động lại — nhớ tải và upload file sao lưu mới.</>
+                  ) : seedStatus.found ? (
+                    <>ℹ️ Có file <strong>{seedStatus.file}</strong> trong GitHub nhưng lần khởi động này chưa dùng, vì server đã có sẵn dữ liệu (để không ghi đè lên chỉnh sửa của bạn).</>
+                  ) : (
+                    <>ℹ️ Chưa thấy file sao lưu trong GitHub. Hãy upload file sao lưu (tên bắt đầu bằng "sao-luu-du-lieu-chatbot-" hoặc đặt tên <strong>seed-backup.json</strong>) vào thư mục gốc của repo để server tự nạp lại mỗi lần khởi động.</>
+                  )}
+                </div>
+              )}
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button type="button" onClick={downloadBackup} disabled={backingUp} style={{ ...primaryButtonStyle, width: "auto", flex: "1 1 200px", marginTop: 0 }}>
                   {backingUp ? "⏳ Đang chuẩn bị file (kèm ảnh)..." : "💾 Tải file sao lưu"}
