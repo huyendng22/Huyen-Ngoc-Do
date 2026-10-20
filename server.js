@@ -524,6 +524,208 @@ app.delete("/api/unanswered", requireAdmin, (req, res) => {
   res.json({ ok: true, removed: before - unanswered.length });
 });
 
+// ================= ĐỒNG BỘ TÀI LIỆU TỪ GOOGLE SHEET =================
+// Khi có cấu hình, Google Sheet là NƠI CHỨA TÀI LIỆU: chuyên gia thêm/sửa/xoá câu hỏi ngay trong Sheet,
+// server tự đọc lại khi khởi động và mỗi vài phút. Nhờ vậy dữ liệu không nằm trên ổ đĩa tạm của Render.
+// Cấu hình (chọn 1): biến môi trường GOOGLE_SHEET_URL, hoặc file google-sheet.txt (dòng đầu = đường dẫn) ở thư mục gốc repo.
+// Sheet cần chia sẻ "Bất kỳ ai có đường liên kết đều xem được" (hoặc Tệp → Chia sẻ → Xuất bản lên web).
+// Cột (dòng 1 là tiêu đề): A Câu hỏi | B Danh mục | C Câu trả lời | D Link video | E Link ảnh | F Cách hỏi khác
+const SHEET_URL_FILE = path.join(__dirname, "google-sheet.txt");
+const SHEET_SYNC_MINUTES = Math.max(0.05, Number(process.env.SHEET_SYNC_MINUTES) || 5);
+const SHEET_TIMEOUT_MS = Number(process.env.SHEET_TIMEOUT_MS) || 20000;
+const SHEET_READONLY_MSG =
+  "Tài liệu đang được đồng bộ từ Google Sheet nên không sửa trực tiếp trong app. Hãy thêm/sửa/xoá câu hỏi trong Google Sheet rồi bấm \"Đồng bộ ngay\".";
+
+function readSheetUrlSetting() {
+  const env = (process.env.GOOGLE_SHEET_URL || "").trim();
+  if (env) return env;
+  try {
+    return fs.readFileSync(SHEET_URL_FILE, "utf8").split(/\r?\n/).map((l) => l.trim()).find((l) => l && !l.startsWith("#")) || "";
+  } catch (e) {
+    return "";
+  }
+}
+
+// Đổi đường dẫn người dùng dán vào (đường dẫn trên thanh địa chỉ / đường dẫn "Xuất bản lên web") thành đường dẫn tải CSV.
+function resolveSheetUrls(raw) {
+  const s0 = String(raw || "").trim();
+  if (!s0) return null;
+  let u;
+  try {
+    u = new URL(s0);
+  } catch (e) {
+    return { error: "Đường dẫn Google Sheet không hợp lệ (phải bắt đầu bằng https://)." };
+  }
+  const gid = (s0.match(/[#?&]gid=(\d+)/) || [])[1];
+  if (u.hostname === "docs.google.com") {
+    const pub = u.pathname.match(/^\/spreadsheets\/d\/e\/([^/]+)/);
+    if (pub) {
+      const q = new URLSearchParams();
+      if (gid) { q.set("gid", gid); q.set("single", "true"); }
+      q.set("output", "csv");
+      return { csvUrl: `https://docs.google.com/spreadsheets/d/e/${pub[1]}/pub?${q}`, editUrl: null };
+    }
+    const m = u.pathname.match(/^\/spreadsheets\/d\/([^/]+)/);
+    if (m) {
+      // Không có gid -> không gửi gid để Google trả về TAB ĐẦU TIÊN (gid=0 có thể không tồn tại ở Sheet nhập từ Excel)
+      return {
+        csvUrl: `https://docs.google.com/spreadsheets/d/${m[1]}/export?format=csv${gid ? "&gid=" + gid : ""}`,
+        editUrl: `https://docs.google.com/spreadsheets/d/${m[1]}/edit${gid ? "#gid=" + gid : ""}`,
+      };
+    }
+  }
+  if (/[?&](output|format)=csv/i.test(s0) || /\.csv(\?|$)/i.test(s0)) return { csvUrl: s0, editUrl: null }; // địa chỉ CSV khác: dùng nguyên
+  return { error: "Không nhận ra đường dẫn. Hãy dán đường dẫn của Google Sheet (dạng https://docs.google.com/spreadsheets/d/...)." };
+}
+
+// Đọc CSV chuẩn RFC 4180: ô trong dấu nháy kép có thể chứa dấu phẩy, xuống dòng, và "" là 1 dấu nháy kép.
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let field = "";
+  let inQuotes = false;
+  let i = text.charCodeAt(0) === 0xfeff ? 1 : 0; // bỏ BOM
+  for (; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; } else inQuotes = false;
+      } else field += c;
+    } else if (c === '"' && field === "") inQuotes = true;
+    else if (c === ",") { row.push(field); field = ""; }
+    else if (c === "\n" || c === "\r") {
+      if (c === "\r" && text[i + 1] === "\n") i++;
+      row.push(field); rows.push(row); row = []; field = "";
+    } else field += c;
+  }
+  if (field !== "" || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+
+function sheetRowsToEntries(rows) {
+  const entries = [];
+  const skipped = [];
+  const warnings = [];
+  const seenTitle = new Map();
+  const usedIds = new Set();
+  const nl = (v) => String(v == null ? "" : v).replace(/\r\n?/g, "\n");
+  const split = (v) => nl(v).split(/[\n|]/).map((x) => x.trim()).filter(Boolean);
+  if (rows.length && !/cau hoi/.test(normalizeVN(rows[0][0]))) {
+    warnings.push('Dòng 1 không giống dòng tiêu đề ("Câu hỏi", ...). Dòng 1 luôn được coi là tiêu đề nên không đưa vào chatbot.');
+  }
+  for (let idx = 1; idx < rows.length; idx++) {
+    const row = rows[idx] || [];
+    const rowNo = idx + 1;
+    const question = nl(row[0]).trim();
+    const answer = nl(row[2]).trim();
+    if (!question && !answer) continue; // dòng trống
+    if (!question) { skipped.push({ row: rowNo, reason: "thiếu Câu hỏi (cột A)" }); continue; }
+    if (!answer) { skipped.push({ row: rowNo, reason: "chưa có Câu trả lời (cột C)", question: question.slice(0, 60) }); continue; }
+    const rawCat = String(row[1] == null ? "" : row[1]).trim().toLowerCase();
+    let category = "KHAC";
+    if (rawCat) {
+      const found = CATEGORIES.find((c) => c.id.toLowerCase() === rawCat || c.label.toLowerCase() === rawCat);
+      if (found) category = found.id;
+      else warnings.push(`Dòng ${rowNo}: danh mục "${String(row[1]).trim()}" không có trong danh sách, đã xếp vào KHAC.`);
+    }
+    const key = question.toLowerCase().replace(/\s+/g, " ");
+    if (seenTitle.has(key)) warnings.push(`Dòng ${rowNo}: câu hỏi trùng với dòng ${seenTitle.get(key)} ("${question.slice(0, 40)}"). Cả hai đều được giữ — nên xoá bớt 1 dòng.`);
+    else seenTitle.set(key, rowNo);
+    // id ổn định theo tiêu đề (đồng bộ lại nhiều lần vẫn giữ nguyên id)
+    let id = "s" + crypto.createHash("sha1").update(key).digest("hex").slice(0, 10);
+    for (let n = 2; usedIds.has(id); n++) id = `${id.split("-")[0]}-${n}`;
+    usedIds.add(id);
+    entries.push({
+      id,
+      title: question,
+      category,
+      content: answer,
+      videoUrl: nl(row[3]).trim(),
+      images: split(row[4]).map((u) => u.replace(/^uploads\//i, "/uploads/")),
+      aliases: split(row[5]),
+    });
+  }
+  return { entries, skipped: skipped.slice(0, 100), warnings: warnings.slice(0, 100) };
+}
+
+const sheetCfg = (() => {
+  const raw = readSheetUrlSetting();
+  if (!raw) return null;
+  return { raw, ...resolveSheetUrls(raw) };
+})();
+const sheetMode = () => !!(sheetCfg && sheetCfg.csvUrl);
+const sheetState = { lastTryAt: null, lastOkAt: null, entries: 0, skipped: [], warnings: [], error: null, syncing: false, signature: null };
+
+function friendlySheetError(e) {
+  if (e && e.sheetCode === "html") return "Google trả về trang đăng nhập thay vì dữ liệu. Hãy chia sẻ Sheet ở chế độ \"Bất kỳ ai có đường liên kết đều có thể xem\" (hoặc Tệp → Chia sẻ → Xuất bản lên web). Chatbot vẫn dùng dữ liệu đã nạp trước đó.";
+  if (e && e.sheetCode === "empty") return "Không có dòng hợp lệ nào trong Sheet (cần cột A Câu hỏi và cột C Câu trả lời, dòng 1 là tiêu đề). Chatbot vẫn dùng dữ liệu đã nạp trước đó.";
+  if (e && e.response) return `Google từ chối truy cập (mã ${e.response.status}). Kiểm tra lại đường dẫn và quyền chia sẻ của Sheet. Chatbot vẫn dùng dữ liệu đã nạp trước đó.`;
+  if (e && /ECONNABORTED|ETIMEDOUT|ENOTFOUND|ECONNREFUSED|ECONNRESET|EAI_AGAIN|timeout/i.test(`${e.code} ${e.message}`)) return "Không kết nối được tới Google lúc này. Chatbot vẫn dùng dữ liệu đã nạp trước đó, sẽ thử lại sau.";
+  return `Lỗi đồng bộ: ${(e && e.message) || e}. Chatbot vẫn dùng dữ liệu đã nạp trước đó.`;
+}
+
+async function syncFromSheet() {
+  if (!sheetMode() || sheetState.syncing) return;
+  sheetState.syncing = true;
+  sheetState.lastTryAt = new Date().toISOString();
+  try {
+    const r = await axios.get(sheetCfg.csvUrl, {
+      timeout: SHEET_TIMEOUT_MS,
+      responseType: "text",
+      transformResponse: [(d) => d],
+      maxContentLength: 25 * 1024 * 1024,
+      headers: { Accept: "text/csv,text/plain,*/*", "User-Agent": "chatbot-sheet-sync" },
+    });
+    const text = String(r.data == null ? "" : r.data);
+    if (/^\s*<(!doctype|html|head|body)/i.test(text) || /text\/html/i.test(String(r.headers["content-type"] || ""))) {
+      const err = new Error("html"); err.sheetCode = "html"; throw err;
+    }
+    const { entries, skipped, warnings } = sheetRowsToEntries(parseCsv(text));
+    if (entries.length === 0) { const err = new Error("empty"); err.sheetCode = "empty"; throw err; }
+    const signature = crypto.createHash("sha1").update(JSON.stringify(entries)).digest("hex");
+    if (signature !== sheetState.signature) {
+      kb = { entries };
+      writeJson(KB_FILE, kb);
+      sheetState.signature = signature;
+      console.log(`[sheet] Đã đồng bộ ${entries.length} mục từ Google Sheet.`);
+    }
+    Object.assign(sheetState, { lastOkAt: new Date().toISOString(), entries: entries.length, skipped, warnings, error: null });
+  } catch (e) {
+    sheetState.error = friendlySheetError(e);
+    console.error("[sheet] Đồng bộ lỗi:", (e && e.sheetCode) || (e && e.message));
+  } finally {
+    sheetState.syncing = false;
+  }
+}
+
+function sheetStatusPayload(admin) {
+  const out = {
+    ok: true,
+    enabled: sheetMode(),
+    configError: sheetCfg && sheetCfg.error ? sheetCfg.error : null,
+    intervalMinutes: SHEET_SYNC_MINUTES,
+    lastOkAt: sheetState.lastOkAt,
+    lastTryAt: sheetState.lastTryAt,
+    entries: sheetState.entries,
+    error: sheetState.error,
+    syncing: sheetState.syncing,
+    skippedCount: sheetState.skipped.length,
+    warningsCount: sheetState.warnings.length,
+  };
+  // Đường dẫn Sheet và chi tiết dòng lỗi chỉ trả cho chuyên gia (có mã quản trị), không lộ cho người dùng thường.
+  if (admin && sheetCfg) Object.assign(out, { editUrl: sheetCfg.editUrl || null, sheetUrl: sheetCfg.raw, csvUrl: sheetCfg.csvUrl || null, skipped: sheetState.skipped, warnings: sheetState.warnings });
+  return out;
+}
+app.get("/api/sheet-status", (req, res) => {
+  const admin = !ADMIN_TOKEN || req.headers["x-admin-token"] === ADMIN_TOKEN;
+  res.json(sheetStatusPayload(admin));
+});
+app.post("/api/sheet/sync", requireAdmin, async (req, res) => {
+  if (!sheetMode()) return res.status(400).json({ ok: false, error: "Chưa cấu hình Google Sheet." });
+  await syncFromSheet();
+  res.json({ ...sheetStatusPayload(true), ok: !sheetState.error });
+});
+
 // ================= CƠ SỞ TRI THỨC (dùng chung) =================
 // ================= TẢI ẢNH MINH HOẠ LÊN SERVER =================
 app.post("/api/upload-image", requireAdmin, (req, res) => {
@@ -567,6 +769,7 @@ app.get("/api/seed-status", (req, res) => {
 });
 
 app.put("/api/kb", requireAdmin, (req, res) => {
+  if (sheetMode()) return res.status(409).json({ ok: false, sheetMode: true, error: SHEET_READONLY_MSG });
   const { entries } = req.body;
   if (!Array.isArray(entries)) return res.status(400).json({ ok: false, error: "Thiếu entries" });
   kb = { entries };
@@ -576,6 +779,7 @@ app.put("/api/kb", requireAdmin, (req, res) => {
 
 // Nhập hàng loạt (dán tay hoặc từ Excel) — nối thêm vào danh sách hiện có
 app.post("/api/kb/import", requireAdmin, (req, res) => {
+  if (sheetMode()) return res.status(409).json({ ok: false, sheetMode: true, error: SHEET_READONLY_MSG });
   const { entries } = req.body;
   if (!Array.isArray(entries) || entries.length === 0) {
     return res.status(400).json({ ok: false, error: "Không có dữ liệu để nhập." });
@@ -932,6 +1136,12 @@ app.post("/api/escalate", async (req, res) => {
 app.get("/health", (req, res) => res.json({ ok: true }));
 
 app.listen(PORT, () => {
+  if (sheetCfg && sheetCfg.error) console.error("[sheet] Cấu hình Google Sheet sai:", sheetCfg.error);
+  if (sheetMode()) {
+    console.log(`[sheet] Dùng Google Sheet làm nơi chứa tài liệu (tự đồng bộ mỗi ${SHEET_SYNC_MINUTES} phút).`);
+    syncFromSheet(); // chạy nền ngay khi khởi động
+    setInterval(syncFromSheet, SHEET_SYNC_MINUTES * 60000).unref();
+  }
   if (unanswered.length) console.log(`[unanswered] Đang có ${unanswered.length} câu hỏi chưa trả lời được ghi nhận.`);
   console.log(`🚀 Website chatbot hỗ trợ đang chạy tại http://localhost:${PORT}`);
   setInterval(async () => {
