@@ -88,7 +88,7 @@ Thay vì nhập từng câu trong app, chuyên gia **thêm / sửa / xoá câu h
 - **Ảnh:** ghi vào cột E, nhiều ảnh cách nhau bằng dấu `|`. Có 2 cách:
   1. **Ảnh đặt trong repo (khuyên dùng, không bao giờ mất):** kéo file ảnh vào thư mục `public/uploads` trên GitHub rồi ghi `/uploads/ten-anh.png` vào Sheet.
   2. Link ảnh `https://...` từ nơi khác.
-  - **13 ảnh của bộ 82 câu hỏi mẫu:** giải nén `anh-minh-hoa.zip` được thư mục `uploads`. Trên GitHub mở thư mục `public` → **Add file → Upload files** → kéo cả thư mục `uploads` vào → Commit. Thiếu bước này thì các câu hỏi có ảnh sẽ hiện "Ảnh lỗi".
+  - **13 ảnh của bộ 82 câu hỏi mẫu:** giải nén `anh-minh-hoa.zip` được thư mục `uploads`. Trên GitHub mở thư mục `public` → **Add file → Upload files** → kéo cả thư mục `uploads` vào → Commit. Thiếu bước này thì các câu hỏi có ảnh sẽ hiện "Ảnh lỗi". (Nếu lỡ kéo từng file ảnh thẳng vào thư mục `public` thay vì thư mục `uploads` thì cũng không sao — server nhận cả hai cách.)
   - Ảnh tải lên qua giao diện app nằm trên ổ đĩa tạm nên không dùng ở chế độ Sheet. Nếu có ảnh bị thiếu, trang quản trị hiện thẻ cảnh báo **🖼️ N ảnh chưa có file trên server** kèm danh sách tên file.
 - Mỗi ô Google Sheet tối đa 50.000 ký tự.
 
