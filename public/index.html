@@ -409,6 +409,11 @@ function App() {
   const [unansweredFilter, setUnansweredFilter] = useState("open");
   const [unansweredNote, setUnansweredNote] = useState(null); // { ok, message }
   const [fromUnanswered, setFromUnanswered] = useState(null); // { id, question, withDraft } khi đang tạo mục từ câu hỏi
+  // Google Sheet làm nơi chứa tài liệu
+  const [sheetStatus, setSheetStatus] = useState(null);
+  const [sheetBusy, setSheetBusy] = useState(false);
+  const [sheetNote, setSheetNote] = useState(null); // { ok, message }
+  const lastSaveErrorRef = useRef("");
   const unansweredBlockedRef = useRef(false); // true khi lần tải gần nhất bị 401 (chưa có mã quản trị) -> ngừng tự làm mới
 
   const [messages, setMessages] = useState([]);
@@ -418,6 +423,7 @@ function App() {
 
   useEffect(() => { loadKb(); loadSettings(); loadEscalations(); loadSeedStatus(); loadUnanswered(); }, []);
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [messages, loading]);
+  useEffect(() => { loadSheetStatus(); }, [tab, adminToken]);
   // Cập nhật ngầm số câu hỏi chưa xử lý trên nhãn tab (người dùng khác có thể vừa hỏi những câu mới).
   useEffect(() => {
     const id = setInterval(() => loadUnanswered(true), 60000);
@@ -431,6 +437,53 @@ function App() {
       const d = await r.json();
       if (d && d.ok) setSeedStatus(d);
     } catch (e) {}
+  }
+
+  // ===== Google Sheet làm nơi chứa tài liệu =====
+  async function loadSheetStatus() {
+    try {
+      const r = await fetch("/api/sheet-status", { headers: authHeaders(adminToken) });
+      const d = await r.json();
+      if (d && d.ok) setSheetStatus(d);
+    } catch (e) {}
+  }
+
+  async function syncSheetNow() {
+    setSheetBusy(true);
+    setSheetNote(null);
+    try {
+      const r = await fetch("/api/sheet/sync", { method: "POST", headers: authHeaders(adminToken) });
+      if (r.status === 401) { setSheetNote({ ok: false, message: "Cần nhập đúng mã quản trị (ô cuối tab Cài đặt) để đồng bộ." }); return; }
+      const d = await r.json();
+      if (d && d.enabled !== undefined) setSheetStatus(d);
+      await loadKb();
+      setSheetNote(d.ok ? { ok: true, message: `Đã đồng bộ ${d.entries} mục từ Google Sheet.` } : { ok: false, message: d.error || "Không đồng bộ được." });
+    } catch (e) {
+      setSheetNote({ ok: false, message: "Lỗi kết nối." });
+    } finally {
+      setSheetBusy(false);
+    }
+  }
+
+  // Sao chép 1 dòng (cột A-F, ngăn cách bằng Tab) để dán thẳng vào Google Sheet: ô có xuống dòng/nháy kép được đặt trong nháy kép.
+  async function copyRowForSheet(u, withDraft) {
+    const others = (u.samples || []).filter((x) => x !== u.question);
+    const field = (v) => { const t = String(v == null ? "" : v); return /["\t\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+    const row = [u.question, "", withDraft && u.draftAnswer ? u.draftAnswer : "", "", "", others.join(" | ")].map(field).join("\t");
+    let ok = false;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(row); ok = true; }
+    } catch (e) {}
+    if (!ok) {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = row; ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.appendChild(ta); ta.select(); ok = document.execCommand("copy"); document.body.removeChild(ta);
+      } catch (e) {}
+    }
+    setUnansweredNote(ok
+      ? { ok: true, message: `Đã sao chép${withDraft && u.draftAnswer ? " (kèm bản nháp AI — cần kiểm tra kỹ)" : ""}. Mở Google Sheet, bấm vào ô A của một dòng trống rồi dán (Ctrl+V): câu hỏi và các cách hỏi khác sẽ tự vào đúng cột. Điền thêm Danh mục và Câu trả lời.` }
+      : { ok: false, message: "Không sao chép tự động được. Hãy tự chép câu hỏi này: " + u.question });
   }
 
   // ===== Câu hỏi chưa trả lời được =====
@@ -607,7 +660,15 @@ function App() {
   async function saveKbEntries(nextEntries) {
     setAdminError("");
     const r = await fetch("/api/kb", { method: "PUT", headers: authHeaders(adminToken), body: JSON.stringify({ entries: nextEntries }) });
-    if (r.status === 401) { setAdminError("Sai mã quản trị — vào cuối tab này để nhập lại."); return false; }
+    lastSaveErrorRef.current = "";
+    if (r.status === 401) { lastSaveErrorRef.current = "Sai mã quản trị — không lưu được."; setAdminError("Sai mã quản trị — vào cuối tab này để nhập lại."); return false; }
+    if (!r.ok) {
+      let msg = "Không lưu được tài liệu.";
+      try { const d = await r.json(); if (d && d.error) msg = d.error; } catch (e) {}
+      lastSaveErrorRef.current = msg;
+      setAdminError(msg);
+      return false;
+    }
     setKbEntries(nextEntries);
     return true;
   }
@@ -1146,8 +1207,12 @@ function App() {
       const entries = parsed?.kb?.entries;
       if (!Array.isArray(entries)) throw new Error("File sao lưu không đúng định dạng (thiếu kb.entries).");
 
-      const okKb = await saveKbEntries(entries);
-      if (!okKb) { setBackupResult({ ok: false, message: "Sai mã quản trị — không khôi phục được." }); return; }
+      if (sheetMode) {
+        // Tài liệu do Google Sheet quản lý -> không ghi đè; chỉ khôi phục cài đặt và ảnh từ file sao lưu.
+      } else {
+        const okKb = await saveKbEntries(entries);
+        if (!okKb) { setBackupResult({ ok: false, message: lastSaveErrorRef.current || "Sai mã quản trị — không khôi phục được." }); return; }
+      }
 
       if (parsed?.settings) {
         const r = await fetch("/api/settings", { method: "PUT", headers: authHeaders(adminToken), body: JSON.stringify(parsed.settings) });
@@ -1172,7 +1237,7 @@ function App() {
         }
       }
 
-      let message = `Đã khôi phục ${entries.length} mục tài liệu${parsed?.settings ? " + cài đặt" : ""}.`;
+      let message = sheetMode ? `Tài liệu đang lấy từ Google Sheet nên không bị ghi đè; đã khôi phục${parsed?.settings ? " cài đặt và" : ""} ảnh.` : `Đã khôi phục ${entries.length} mục tài liệu${parsed?.settings ? " + cài đặt" : ""}.`;
       if (paths.length > 0) {
         message += ` Đã ghi lại ${imageOk}/${paths.length} ảnh đã tải lên.`;
       } else {
@@ -1319,6 +1384,52 @@ function App() {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   }
 
+  const sheetMode = !!(sheetStatus && sheetStatus.enabled);
+  function renderSheetPanel() {
+    const s = sheetStatus;
+    if (!s) return null;
+    const link = s.editUrl || s.sheetUrl;
+    const when = (iso) => (iso ? new Date(iso).toLocaleString("vi-VN") : "chưa lần nào");
+    return (
+      <div style={{ ...card, border: s.enabled ? "1px solid #BFD9C4" : "1px solid #DDD7C9", background: s.enabled ? "#F4FAF5" : "#FFFFFF" }}>
+        <div style={sectionTitle}>📊 Google Sheet — nơi chứa tài liệu</div>
+        {!s.enabled && !s.configError && (
+          <div style={{ fontSize: 12.5, color: "#6B6255", lineHeight: 1.6 }}>
+            Chưa kết nối. Nếu muốn chuyên gia quản lý tài liệu bằng Google Sheet (dữ liệu không bao giờ mất khi Render khởi động lại), đặt biến môi trường <strong>GOOGLE_SHEET_URL</strong> trên Render bằng đường dẫn Sheet — xem hướng dẫn trong README.
+          </div>
+        )}
+        {s.configError && <div style={{ fontSize: 12.5, color: "#B3261E", fontWeight: 600, lineHeight: 1.6 }}>❌ {s.configError}</div>}
+        {s.enabled && (
+          <>
+            <div style={{ fontSize: 12.5, color: "#4A443B", lineHeight: 1.6 }}>
+              Tài liệu đang <strong>đồng bộ từ Google Sheet</strong>: thêm / sửa / xoá câu hỏi trực tiếp trong Sheet (cột A Câu hỏi · B Danh mục · C Câu trả lời · D Link video · E Link ảnh · F Cách hỏi khác). Server tự cập nhật mỗi {s.intervalMinutes} phút; bấm "Đồng bộ ngay" để thấy thay đổi tức thì.
+            </div>
+            <div style={{ fontSize: 12, color: "#6B6255", marginTop: 6 }}>
+              Đồng bộ thành công gần nhất: <strong>{when(s.lastOkAt)}</strong> · {s.entries} mục
+              {s.skippedCount > 0 && <> · <span style={{ color: "#8A6D00" }}>{s.skippedCount} dòng bị bỏ qua</span></>}
+              {s.warningsCount > 0 && <> · <span style={{ color: "#8A6D00" }}>{s.warningsCount} cảnh báo</span></>}
+            </div>
+            {s.error && <div style={{ fontSize: 12.5, color: "#B3261E", fontWeight: 600, marginTop: 8, lineHeight: 1.6 }}>⚠️ {s.error}</div>}
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+              <button type="button" onClick={syncSheetNow} disabled={sheetBusy} style={darkButton}>{sheetBusy ? "⏳ Đang đồng bộ..." : "🔄 Đồng bộ ngay"}</button>
+              {link && <a href={link} target="_blank" rel="noreferrer" style={{ ...outlineButton, display: "inline-flex", alignItems: "center", textDecoration: "none" }}>📝 Mở Google Sheet để sửa</a>}
+            </div>
+            {sheetNote && <div style={{ marginTop: 8, fontSize: 12.5, fontWeight: 600, color: sheetNote.ok ? "#3D7A4E" : "#B3261E" }}>{sheetNote.ok ? "✅ " : "❌ "}{sheetNote.message}</div>}
+            {((s.skipped && s.skipped.length > 0) || (s.warnings && s.warnings.length > 0)) && (
+              <details style={{ marginTop: 8 }}>
+                <summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 600, color: "#8A6D00" }}>Xem dòng bị bỏ qua / cảnh báo trong Sheet</summary>
+                <ul style={{ fontSize: 12, color: "#6B6255", lineHeight: 1.6, margin: "6px 0", paddingLeft: 20 }}>
+                  {(s.skipped || []).slice(0, 30).map((x, i) => <li key={"k" + i}>Dòng {x.row}: {x.reason}{x.question ? ` — "${x.question}"` : ""} (không đưa vào chatbot)</li>)}
+                  {(s.warnings || []).slice(0, 30).map((w, i) => <li key={"w" + i}>{w}</li>)}
+                </ul>
+              </details>
+            )}
+          </>
+        )}
+      </div>
+    );
+  }
+
   const reasonCount = (u, k) => (u.reasons && u.reasons[k]) || 0;
   const needsAttention = (u) => reasonCount(u, "ai_unknown") + reasonCount(u, "escalated") > 0;
   const unansweredScore = (u) => (u.count || 0) + 2 * (reasonCount(u, "ai_unknown") + reasonCount(u, "escalated"));
@@ -1369,6 +1480,7 @@ function App() {
       <div style={{ flex: 1, padding: "24px 20px", display: "flex", justifyContent: "center" }}>
         {tab === "kb" ? (
           <div style={{ width: "100%", maxWidth: "760px", display: "flex", flexDirection: "column", gap: "20px" }}>
+            {sheetMode ? renderSheetPanel() : (
             <div style={card}>
               <div style={{ display: "flex", gap: "8px", marginBottom: "16px", alignItems: "center" }}>
                 <div style={{ display: "flex", gap: "6px", background: "#F3F1EC", padding: "4px", borderRadius: "9px", flex: 1 }}>
@@ -1533,6 +1645,7 @@ function App() {
               )}
               {adminError && <div style={{ marginTop: 10, fontSize: 12.5, color: "#B3261E" }}>{adminError}</div>}
             </div>
+            )}
 
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={{ fontSize: 13, color: "#6B6255", fontWeight: 600, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -1717,10 +1830,10 @@ function App() {
                           </div>
                         )}
                       </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {!sheetMode && <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                         <button onClick={() => startEdit(e)} title="Chỉnh sửa" style={{ background: "transparent", border: "none", cursor: "pointer", color: "#12303F", height: "fit-content", fontSize: 16 }}>✏️</button>
                         <button onClick={() => removeEntry(e.id)} title="Xoá" style={{ background: "transparent", border: "none", cursor: "pointer", color: "#B5652F", height: "fit-content", fontSize: 16 }}>🗑️</button>
-                      </div>
+                      </div>}
                     </div>
                   )}
                 </div>
@@ -1827,6 +1940,7 @@ function App() {
                 <button type="button" onClick={loadUnanswered} disabled={unansweredLoading} style={outlineButton}>{unansweredLoading ? "⏳ Đang tải..." : "🔄 Làm mới"}</button>
                 <button type="button" onClick={recheckUnanswered} style={outlineButton} title="Chạy lại tìm kiếm với tài liệu hiện tại, tự đóng những câu đã có đáp án">✅ Tự đóng câu đã có đáp án</button>
                 <button type="button" onClick={exportUnansweredExcel} style={outlineButton} title="Xuất Excel đúng định dạng file nhập: điền câu trả lời rồi nhập lại">📥 Tải Excel</button>
+                {sheetMode && (sheetStatus.editUrl || sheetStatus.sheetUrl) && <a href={sheetStatus.editUrl || sheetStatus.sheetUrl} target="_blank" rel="noreferrer" style={{ ...outlineButton, display: "inline-flex", alignItems: "center", textDecoration: "none" }}>📝 Mở Google Sheet</a>}
                 {unansweredCounts.closed > 0 && <button type="button" onClick={cleanClosedUnanswered} style={outlineButton}>🧹 Dọn đã xử lý</button>}
               </div>
               {unansweredNote && (
@@ -1874,8 +1988,17 @@ function App() {
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
                     {u.status === "new" ? (
                       <>
-                        <button type="button" onClick={() => startFromUnanswered(u, false)} style={{ ...darkButton, height: 32 }}>➕ Tạo mục tài liệu</button>
-                        {u.draftAnswer && <button type="button" onClick={() => startFromUnanswered(u, true)} style={{ ...outlineButton, height: 32 }}>➕ Tạo mục kèm bản nháp AI</button>}
+                        {sheetMode ? (
+                          <>
+                            <button type="button" onClick={() => copyRowForSheet(u, false)} style={{ ...darkButton, height: 32 }}>📋 Sao chép để dán vào Sheet</button>
+                            {u.draftAnswer && <button type="button" onClick={() => copyRowForSheet(u, true)} style={{ ...outlineButton, height: 32 }}>📋 Sao chép kèm bản nháp AI</button>}
+                          </>
+                        ) : (
+                          <>
+                            <button type="button" onClick={() => startFromUnanswered(u, false)} style={{ ...darkButton, height: 32 }}>➕ Tạo mục tài liệu</button>
+                            {u.draftAnswer && <button type="button" onClick={() => startFromUnanswered(u, true)} style={{ ...outlineButton, height: 32 }}>➕ Tạo mục kèm bản nháp AI</button>}
+                          </>
+                        )}
                         <button type="button" onClick={() => updateUnanswered(u.id, "resolved", "Đã xử lý thủ công")} style={{ ...outlineButton, height: 32 }}>✓ Đã xử lý</button>
                         <button type="button" onClick={() => updateUnanswered(u.id, "ignored")} style={{ ...outlineButton, height: 32 }}>Bỏ qua</button>
                       </>
@@ -1892,6 +2015,7 @@ function App() {
           </div>
         ) : (
           <div style={{ width: "100%", maxWidth: 760, display: "flex", flexDirection: "column", gap: 20 }}>
+            {renderSheetPanel()}
             <div style={{ ...card, border: "1px solid #F0D9BE", background: "#FFF9F0" }}>
               <div style={sectionTitle}>🗄️ Sao lưu &amp; khôi phục dữ liệu</div>
               <div style={{ fontSize: 12.5, color: "#6B6255", lineHeight: 1.6, marginBottom: 12 }}>
