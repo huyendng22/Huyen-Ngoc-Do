@@ -85,7 +85,11 @@ Thay vì nhập từng câu trong app, chuyên gia **thêm / sửa / xoá câu h
 - **Tab ❓ Chưa trả lời:** nút **📋 Sao chép để dán vào Sheet** chép sẵn 1 dòng (câu hỏi + các cách hỏi khác, tuỳ chọn kèm bản nháp AI). Mở Sheet, bấm vào ô A của dòng trống, dán (Ctrl+V), rồi điền Danh mục và Câu trả lời.
 - Dòng 1 luôn là tiêu đề. Dòng thiếu **Câu hỏi** (cột A) hoặc **Câu trả lời** (cột C) sẽ bị bỏ qua; app liệt kê số dòng bị bỏ qua trong thẻ Google Sheet. Danh mục điền `HD` / `LOI` / `CS` / `335` / `KHAC` (hoặc tên đầy đủ).
 - Cột Câu trả lời dùng định dạng như cũ: `**đậm**`, `*nghiêng*`, `__gạch chân__`, `- ` / `* ` / `1. ` đầu dòng, `## Tiêu đề phần`, `->` thành →. **Ô bắt đầu bằng dấu `=` hoặc `+`** sẽ bị Google hiểu là công thức — hãy gõ thêm dấu nháy đơn `'` đứng trước.
-- **Ảnh:** ghi vào cột E, nhiều ảnh cách nhau bằng dấu `|`. Dùng link `https://...`, hoặc ảnh đặt trong repo: kéo file ảnh vào thư mục `public/uploads` trên GitHub rồi ghi `/uploads/ten-anh.png`. (Ảnh tải lên qua giao diện app nằm trên ổ đĩa tạm nên không dùng ở chế độ Sheet.) Các ảnh cũ trong file sao lưu ở thư mục gốc repo vẫn hiển thị bình thường — giữ file đó lại.
+- **Ảnh:** ghi vào cột E, nhiều ảnh cách nhau bằng dấu `|`. Có 2 cách:
+  1. **Ảnh đặt trong repo (khuyên dùng, không bao giờ mất):** kéo file ảnh vào thư mục `public/uploads` trên GitHub rồi ghi `/uploads/ten-anh.png` vào Sheet.
+  2. Link ảnh `https://...` từ nơi khác.
+  - **13 ảnh của bộ 82 câu hỏi mẫu:** giải nén `anh-minh-hoa.zip` được thư mục `uploads`. Trên GitHub mở thư mục `public` → **Add file → Upload files** → kéo cả thư mục `uploads` vào → Commit. Thiếu bước này thì các câu hỏi có ảnh sẽ hiện "Ảnh lỗi".
+  - Ảnh tải lên qua giao diện app nằm trên ổ đĩa tạm nên không dùng ở chế độ Sheet. Nếu có ảnh bị thiếu, trang quản trị hiện thẻ cảnh báo **🖼️ N ảnh chưa có file trên server** kèm danh sách tên file.
 - Mỗi ô Google Sheet tối đa 50.000 ký tự.
 
 ### Lưu ý bảo mật
@@ -102,6 +106,7 @@ Khi lỗi, chatbot **luôn giữ nguyên dữ liệu đã nạp trước đó** 
 | "Không có dòng hợp lệ nào…" | Sheet trống, hoặc đang trỏ nhầm tab "Hướng dẫn". Mở đúng tab dữ liệu, copy lại đường dẫn (có `#gid=`). |
 | "Không kết nối được tới Google…" | Tạm thời; server tự thử lại ở lần đồng bộ sau. |
 | "Không nhận ra đường dẫn…" | Chưa dán đúng link Google Sheet (phải dạng `https://docs.google.com/spreadsheets/d/...`). |
+| Thẻ "🖼️ N ảnh chưa có file trên server" / ảnh hiện "Ảnh lỗi" | Sheet nhắc tới ảnh nhưng file ảnh chưa nằm trong `public/uploads` của repo. Kéo ảnh vào đó (xem mục Ảnh ở trên), danh sách tên file thiếu nằm trong thẻ cảnh báo. |
 | "Dòng 1 không giống dòng tiêu đề…" | Sheet thiếu dòng tiêu đề; dòng 1 luôn bị coi là tiêu đề nên mục ở dòng 1 không được nạp. |
 
 Đường dẫn dạng **Tệp → Chia sẻ → Xuất bản lên web** (chọn tab + định dạng CSV) cũng dùng được; khi đó Google có thể trễ vài phút mới phản ánh thay đổi.

@@ -726,6 +726,34 @@ app.post("/api/sheet/sync", requireAdmin, async (req, res) => {
   res.json({ ...sheetStatusPayload(true), ok: !sheetState.error });
 });
 
+// ================= KIỂM TRA ẢNH ĐƯỢC NHẮC TỚI TRONG TÀI LIỆU CÓ FILE THẬT KHÔNG =================
+// Tài liệu (nhất là khi lấy từ Google Sheet) chỉ ghi TÊN ảnh dạng "/uploads/ten.png". Nếu file ảnh chưa nằm trên server
+// (chưa đưa vào public/uploads của repo, hoặc chưa nạp từ file sao lưu) thì giao diện chỉ hiện "Ảnh lỗi".
+// Hàm này liệt kê chính xác ảnh nào đang thiếu để chuyên gia biết cần bổ sung gì.
+function findMissingImages() {
+  const refs = new Set();
+  ((kb && kb.entries) || []).forEach((e) => {
+    getEntryImages(e).forEach((u) => refs.add(String(u)));
+    String(e.content || "").split("\n").forEach((line) => {
+      const t = line.trim();
+      if (/^\/?uploads\/\S+$/i.test(t)) refs.add(t);
+    });
+  });
+  const missing = [];
+  refs.forEach((u) => {
+    const m = /^\/?uploads\/([^?#]+)/i.exec(u);
+    if (!m) return; // link https://... không kiểm tra được từ server
+    let base;
+    try { base = path.basename(decodeURIComponent(m[1])); } catch (e) { base = path.basename(m[1]); }
+    const onDisk = fs.existsSync(path.join(UPLOADS_DIR, base)) || fs.existsSync(path.join(__dirname, "public", "uploads", base));
+    if (!onDisk) missing.push(u);
+  });
+  return { checked: refs.size, missing: missing.sort() };
+}
+app.get("/api/missing-images", requireAdmin, (req, res) => {
+  res.json({ ok: true, ...findMissingImages() });
+});
+
 // ================= CƠ SỞ TRI THỨC (dùng chung) =================
 // ================= TẢI ẢNH MINH HOẠ LÊN SERVER =================
 app.post("/api/upload-image", requireAdmin, (req, res) => {
