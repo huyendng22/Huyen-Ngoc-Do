@@ -410,6 +410,7 @@ function App() {
   const [unansweredNote, setUnansweredNote] = useState(null); // { ok, message }
   const [fromUnanswered, setFromUnanswered] = useState(null); // { id, question, withDraft } khi đang tạo mục từ câu hỏi
   // Google Sheet làm nơi chứa tài liệu
+  const [missingImages, setMissingImages] = useState(null); // { checked, missing: [...] }
   const [sheetStatus, setSheetStatus] = useState(null);
   const [sheetBusy, setSheetBusy] = useState(false);
   const [sheetNote, setSheetNote] = useState(null); // { ok, message }
@@ -423,7 +424,7 @@ function App() {
 
   useEffect(() => { loadKb(); loadSettings(); loadEscalations(); loadSeedStatus(); loadUnanswered(); }, []);
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [messages, loading]);
-  useEffect(() => { loadSheetStatus(); }, [tab, adminToken]);
+  useEffect(() => { loadSheetStatus(); loadMissingImages(); }, [tab, adminToken]);
   // Cập nhật ngầm số câu hỏi chưa xử lý trên nhãn tab (người dùng khác có thể vừa hỏi những câu mới).
   useEffect(() => {
     const id = setInterval(() => loadUnanswered(true), 60000);
@@ -634,11 +635,21 @@ function App() {
     setUnansweredNote({ ok: true, message: `Đã xuất ${list.length} câu hỏi. Điền cột C rồi nhập lại bằng "Nhập file Excel".` });
   }
 
+  async function loadMissingImages() {
+    try {
+      const r = await fetch("/api/missing-images", { headers: authHeaders(adminToken) });
+      if (!r.ok) return;
+      const d = await r.json();
+      if (d && d.ok) setMissingImages(d);
+    } catch (e) {}
+  }
+
   async function loadKb() {
     try {
       const r = await fetch("/api/kb");
       const data = await r.json();
       setKbEntries(data.entries || []);
+      loadMissingImages();
     } catch (e) {} finally { setLoadingKb(false); }
   }
   async function loadSettings() {
@@ -1385,6 +1396,25 @@ function App() {
   }
 
   const sheetMode = !!(sheetStatus && sheetStatus.enabled);
+  function renderMissingImagesWarning() {
+    const list = missingImages && missingImages.missing;
+    if (!list || list.length === 0) return null;
+    return (
+      <div style={{ ...card, border: "1px solid #F0C9A0", background: "#FFF6EC" }}>
+        <div style={sectionTitle}>🖼️ {list.length} ảnh chưa có file trên server</div>
+        <div style={{ fontSize: 12.5, color: "#4A443B", lineHeight: 1.6 }}>
+          Tài liệu nhắc tới các ảnh bên dưới nhưng server không tìm thấy file ảnh, nên trên trang đang hiện <strong>"Ảnh lỗi"</strong>. Cách khắc phục: kéo các file ảnh vào thư mục <strong>public/uploads</strong> trên GitHub (khuyên dùng — ảnh nằm trong repo nên không bao giờ mất), hoặc đưa file sao lưu <strong>.json</strong> có kèm ảnh vào thư mục gốc repo rồi bấm <strong>Manual Deploy</strong> trên Render.
+        </div>
+        <details style={{ marginTop: 8 }}>
+          <summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 600, color: "#8A6D00" }}>Xem tên các file ảnh đang thiếu ({list.length})</summary>
+          <ul style={{ fontSize: 12, color: "#6B6255", lineHeight: 1.6, margin: "6px 0", paddingLeft: 20 }}>
+            {list.slice(0, 40).map((u, i) => <li key={i}>{u}</li>)}
+            {list.length > 40 && <li>… và {list.length - 40} ảnh khác</li>}
+          </ul>
+        </details>
+      </div>
+    );
+  }
   function renderSheetPanel() {
     const s = sheetStatus;
     if (!s) return null;
@@ -1646,6 +1676,8 @@ function App() {
               {adminError && <div style={{ marginTop: 10, fontSize: 12.5, color: "#B3261E" }}>{adminError}</div>}
             </div>
             )}
+
+            {renderMissingImagesWarning()}
 
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={{ fontSize: 13, color: "#6B6255", fontWeight: 600, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -2015,6 +2047,7 @@ function App() {
           </div>
         ) : (
           <div style={{ width: "100%", maxWidth: 760, display: "flex", flexDirection: "column", gap: 20 }}>
+            {renderMissingImagesWarning()}
             {renderSheetPanel()}
             <div style={{ ...card, border: "1px solid #F0D9BE", background: "#FFF9F0" }}>
               <div style={sectionTitle}>🗄️ Sao lưu &amp; khôi phục dữ liệu</div>
