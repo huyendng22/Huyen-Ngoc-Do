@@ -74,6 +74,37 @@
 /* điện thoại: cột lưới được phép co lại (nếu không bảng rộng sẽ làm tràn cả trang) */
 @media(max-width:740px){.workspace,.settings-layout{grid-template-columns:minmax(0,1fr)}.shell{display:block}.main{min-width:0;max-width:100vw}.table-wrap{max-width:100%}}
 
+/* ===== Chat thử nghiệm: khung chat theo mẫu (index_1.html) ===== */
+.chat-hint{max-width:440px;margin:0 auto 12px;color:#718096;font-size:12.5px;line-height:1.55;text-align:center}
+.chat-panel{width:min(440px,100%);margin:0 auto;height:min(640px,calc(100vh - 350px));min-height:460px;background:#fff;border:1px solid #e0e6ee;border-radius:6px;box-shadow:0 4px 24px #173d631c;display:flex;flex-direction:column;overflow:hidden}
+.chat-panel .phead{height:54px;padding:0 16px;border-bottom:1px solid #e4e9ef;display:flex;align-items:center;justify-content:space-between;color:#506174;flex:0 0 auto}
+.chat-panel .pbody{padding:29px 20px 15px;flex:1;overflow:auto;text-align:center}
+.chat-panel .pbody h2{font-size:24px;color:#397ce6;line-height:1.4;margin:0 0 10px}
+.chat-panel .pbody>p{color:#858f9b;line-height:1.55;margin:0 0 20px}
+.quick{display:grid;grid-template-columns:1fr 1fr;gap:10px;text-align:left}
+.quick button{padding:9px 12px;background:#fff;border:1px solid #e0e6ed;border-radius:18px;color:#566372;font-size:12px;font-weight:700;line-height:1.4;text-align:left}.quick button span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.quick button:hover{border-color:#3489e7;color:#1676d3}
+.messages{text-align:left;margin:16px 0}
+.msg{font-size:13px;padding:10px 12px;border-radius:10px 10px 2px 10px;background:#eaf3ff;margin:8px 0 8px auto;width:max-content;max-width:88%;line-height:1.5;word-break:break-word}
+.msg.bot{margin-left:0;margin-right:auto;border-radius:10px 10px 10px 2px;background:#f0f2f5}
+.msg-caption{font-size:10.5px;font-weight:700;color:#3d7a4e;text-transform:uppercase;letter-spacing:.03em;margin:10px 0 2px}.msg-caption.ai{color:#0869b6}
+.msg-link{background:transparent;border:0;color:#718096;font-size:11.5px;text-decoration:underline;padding:0;margin:2px 0 6px}
+.msg-error{font-size:11.5px;color:#b3261e;margin:2px 0 6px}
+.answer-options{display:grid;gap:8px;margin:10px 0 14px}
+.answer-options button{width:100%;padding:10px 12px;border:1px solid #cbddec;border-radius:8px;background:#fff;color:#216dae;text-align:left;font-size:13px;line-height:1.4}
+.answer-options button:hover:not(:disabled){border-color:#0b7fe6;background:#f2f8ff}
+.answer-options button.selected{border-color:#0b7fe6;background:#eaf4ff;color:#075f9e}
+.answer-options button:disabled{opacity:.7;cursor:not-allowed}
+.answer-options .expert{margin-top:3px;border-color:#f1c565;background:#fffaf0;color:#9a6200;text-align:center;font-weight:700}
+.chat-panel .composer{height:68px;padding:13px 14px;border-top:1px solid #e5e9ee;display:flex;gap:8px;flex:0 0 auto}
+.chat-panel .composer input{border:0;outline:0;flex:1;color:#536273;min-width:0;background:transparent;font-size:14px}
+.chat-panel .send{border:0;border-radius:50%;width:39px;height:39px;background:#3d84e7;color:#fff;font-size:18px;flex:0 0 auto}.chat-panel .send:disabled{opacity:.55;cursor:not-allowed}
+@media(max-width:740px){.chat-panel{height:calc(100vh - 230px)}.quick{grid-template-columns:1fr}}
+
+/* tab Câu hỏi chưa tìm thấy: 'Chọn tất cả' và thùng rác luôn nằm cùng 1 hàng */
+.unanswered-head-actions{flex-wrap:nowrap;flex:0 0 auto}.unanswered-head>div:first-child{flex:1;min-width:0}
+@media(max-width:740px){.unanswered-head-actions{flex-wrap:wrap}}
+
 </style>
 </head>
 <body>
@@ -307,7 +338,7 @@ function resolveCategoryId(raw, defaultId) {
 }
 const EXAMPLE_QUESTION = "Làm sao để đặt lại mật khẩu?";
 const DEFAULT_NO_RESULT_MESSAGE = "Không tìm thấy nội dung bạn đang tìm kiếm trong tài liệu. Bạn thử diễn đạt khác đi hoặc liên hệ chuyên gia để được tư vấn rõ nhất.";
-const DEFAULT_GREETING = "Chào bạn, tôi là chatbot hỗ trợ phần mềm. Hãy đặt câu hỏi, tôi sẽ trả lời dựa trên tài liệu hướng dẫn đã được nạp.";
+const DEFAULT_GREETING = "Xin chào! Tôi có thể giúp gì cho bạn? Đặt câu hỏi cho tôi để được hỗ trợ nhanh.";
 
 function authHeaders(adminToken) {
   const h = { "Content-Type": "application/json" };
@@ -482,6 +513,18 @@ async function copyTextToClipboard(text) {
     document.body.removeChild(ta);
     return ok;
   } catch (e) { return false; }
+}
+
+// Lời chào -> tiêu đề lớn + dòng phụ (như khung chat mẫu). VD "Xin chào! Tôi có thể giúp gì cho bạn? Đặt câu hỏi cho tôi." -> 2 phần
+function splitGreeting(text) {
+  const t = String(text || "").trim();
+  if (!t) return { title: "Xin chào! Tôi có thể giúp gì cho bạn?", sub: "" };
+  const nl = t.indexOf("\n");
+  if (nl > 0) return { title: t.slice(0, nl).trim(), sub: t.slice(nl + 1).trim() };
+  let cut = t.indexOf("?");
+  if (cut < 0 || cut > 140) { const m = t.match(/[.!]\s/); cut = m ? m.index : -1; }
+  if (cut < 0) return { title: t, sub: "" };
+  return { title: t.slice(0, cut + 1).trim(), sub: t.slice(cut + 1).trim() };
 }
 
 function App() {
@@ -1407,7 +1450,7 @@ function App() {
       const n = Object.keys(uploadedImages).length;
       let message = `Đã tải file sao lưu${n > 0 ? ` (kèm ${n} ảnh đã tải lên)` : ""}. Hãy upload file này vào thư mục gốc của repo GitHub để server tự nạp lại mỗi lần khởi động.`;
       if (failedImages > 0) {
-        message += ` ⚠️ Có ${failedImages} ảnh KHÔNG nhúng được (đã mất khỏi server, có thể do vừa deploy code) — file sao lưu này sẽ không khôi phục lại được (các) ảnh đó. Nếu có bản sao lưu cũ hơn còn ảnh, hãy giữ lại bản đó.`;
+        message += ` Có ${failedImages} ảnh KHÔNG nhúng được (đã mất khỏi server, có thể do vừa deploy code) — file sao lưu này sẽ không khôi phục lại được (các) ảnh đó. Nếu có bản sao lưu cũ hơn còn ảnh, hãy giữ lại bản đó.`;
       }
       setBackupResult({ ok: failedImages === 0, message });
     } finally {
@@ -1534,7 +1577,7 @@ function App() {
     if (result.type === "ambiguous") {
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", source: "ambiguous", text: "🤔 Mình tìm thấy vài mục có thể phù hợp, ý bạn là mục nào?", candidates: result.candidates, question },
+        { role: "assistant", source: "ambiguous", text: "Mình tìm thấy vài mục có thể phù hợp, ý bạn là mục nào?", candidates: result.candidates, question },
       ]);
       return;
     }
@@ -1542,7 +1585,7 @@ function App() {
     logNoMatch(question);
     setMessages((prev) => [
       ...prev,
-      { role: "assistant", source: "nomatch", text: settings.noResultMessage || "🔍 Không tìm thấy nội dung phù hợp trong tài liệu đã nạp.", question },
+      { role: "assistant", source: "nomatch", text: settings.noResultMessage || "Không tìm thấy nội dung phù hợp trong tài liệu đã nạp.", question },
     ]);
   }
 
@@ -1611,7 +1654,7 @@ function App() {
     if (!list || list.length === 0) return null;
     return (
       <div style={{ ...card, border: "1px solid #F0C9A0", background: "#FFF6EC" }}>
-        <div style={sectionTitle}>🖼️ {list.length} ảnh chưa có file trên server</div>
+        <div style={sectionTitle}>{list.length} ảnh chưa có file trên server</div>
         <div style={{ fontSize: 12.5, color: "#3a4a5c", lineHeight: 1.6 }}>
           Tài liệu nhắc tới các ảnh bên dưới nhưng server không tìm thấy file ảnh, nên trên trang đang hiện <strong>"Ảnh lỗi"</strong>. Cách khắc phục: kéo các file ảnh vào thư mục <strong>public/uploads</strong> trên GitHub (khuyên dùng — ảnh nằm trong repo nên không bao giờ mất), hoặc đưa file sao lưu <strong>.json</strong> có kèm ảnh vào thư mục gốc repo rồi bấm <strong>Manual Deploy</strong> trên Render.
         </div>
@@ -1632,18 +1675,18 @@ function App() {
     const when = (iso) => (iso ? new Date(iso).toLocaleString("vi-VN") : "chưa lần nào");
     return (
       <div style={{ ...card, border: s.enabled ? "1px solid #BFD9C4" : "1px solid #dce4ed", background: s.enabled ? "#F4FAF5" : "#FFFFFF" }}>
-        <div style={sectionTitle}>📊 Google Sheet — nơi chứa tài liệu</div>
+        <div style={sectionTitle}>Google Sheet — nơi chứa tài liệu</div>
         {!s.enabled && !s.configError && (
           <div style={{ fontSize: 12.5, color: "#5b6b7e", lineHeight: 1.6 }}>
             Chưa kết nối. Nếu muốn chuyên gia quản lý tài liệu bằng Google Sheet (dữ liệu không bao giờ mất khi Render khởi động lại), đặt biến môi trường <strong>GOOGLE_SHEET_URL</strong> trên Render bằng đường dẫn Sheet — xem hướng dẫn trong README.
           </div>
         )}
-        {s.configError && <div style={{ fontSize: 12.5, color: "#B3261E", fontWeight: 600, lineHeight: 1.6 }}>❌ {s.configError}</div>}
+        {s.configError && <div style={{ fontSize: 12.5, color: "#B3261E", fontWeight: 600, lineHeight: 1.6 }}>{s.configError}</div>}
         {s.enabled && (
           <>
             {s.writeEnabled ? (
               <div style={{ fontSize: 12.5, color: "#3a4a5c", lineHeight: 1.6 }}>
-                🔁 <strong>Hai chiều:</strong> thêm / sửa / xoá / nhập Excel ngay trong chatbot sẽ được <strong>ghi thẳng vào Google Sheet</strong>; sửa trực tiếp trong Sheet (cột A Câu hỏi · B Danh mục · C Câu trả lời · D Link video · E Link ảnh · F Cách hỏi khác) thì chatbot tự cập nhật mỗi {s.intervalMinutes} phút, hoặc bấm "Đồng bộ ngay". Ảnh: dán link https://… (không tải ảnh từ máy lên ở chế độ này).
+                <strong>Hai chiều:</strong> thêm / sửa / xoá / nhập Excel ngay trong chatbot sẽ được <strong>ghi thẳng vào Google Sheet</strong>; sửa trực tiếp trong Sheet (cột A Câu hỏi · B Danh mục · C Câu trả lời · D Link video · E Link ảnh · F Cách hỏi khác) thì chatbot tự cập nhật mỗi {s.intervalMinutes} phút, hoặc bấm "Đồng bộ ngay". Ảnh: dán link https://… (không tải ảnh từ máy lên ở chế độ này).
               </div>
             ) : (
               <div style={{ fontSize: 12.5, color: "#3a4a5c", lineHeight: 1.6 }}>
@@ -1651,19 +1694,19 @@ function App() {
                 {!s.writeConfigError && <div style={{ marginTop: 6, color: "#5b6b7e" }}>Muốn nhập dữ liệu ngay trong chatbot và tự ghi vào Sheet? Bật "ghi hai chiều" — xem README, mục <em>"Nhập dữ liệu ngay trong chatbot và tự ghi ngược vào Google Sheet"</em>.</div>}
               </div>
             )}
-            {s.writeConfigError && <div style={{ fontSize: 12.5, color: "#B3261E", fontWeight: 600, marginTop: 8, lineHeight: 1.6 }}>❌ Ghi hai chiều chưa bật: {s.writeConfigError}</div>}
+            {s.writeConfigError && <div style={{ fontSize: 12.5, color: "#B3261E", fontWeight: 600, marginTop: 8, lineHeight: 1.6 }}>Ghi hai chiều chưa bật: {s.writeConfigError}</div>}
             <div style={{ fontSize: 12, color: "#5b6b7e", marginTop: 6 }}>
               Đồng bộ thành công gần nhất: <strong>{when(s.lastOkAt)}</strong> · {s.entries} mục
               {s.skippedCount > 0 && <> · <span style={{ color: "#8A6D00" }}>{s.skippedCount} dòng bị bỏ qua</span></>}
               {s.warningsCount > 0 && <> · <span style={{ color: "#8A6D00" }}>{s.warningsCount} cảnh báo</span></>}
             </div>
-            {s.error && <div style={{ fontSize: 12.5, color: "#B3261E", fontWeight: 600, marginTop: 8, lineHeight: 1.6 }}>⚠️ {s.error}</div>}
+            {s.error && <div style={{ fontSize: 12.5, color: "#B3261E", fontWeight: 600, marginTop: 8, lineHeight: 1.6 }}>{s.error}</div>}
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-              <button type="button" onClick={syncSheetNow} disabled={sheetBusy} style={darkButton}>{sheetBusy ? "⏳ Đang đồng bộ..." : "🔄 Đồng bộ ngay"}</button>
-              {s.writeEnabled && <button type="button" onClick={testSheetWrite} disabled={sheetBusy} style={outlineButton}>🧪 Kiểm tra kết nối ghi</button>}
-              {link && <a href={link} target="_blank" rel="noreferrer" style={{ ...outlineButton, display: "inline-flex", alignItems: "center", textDecoration: "none" }}>📝 Mở Google Sheet để sửa</a>}
+              <button type="button" onClick={syncSheetNow} disabled={sheetBusy} style={darkButton}>{sheetBusy ? "Đang đồng bộ..." : "Đồng bộ ngay"}</button>
+              {s.writeEnabled && <button type="button" onClick={testSheetWrite} disabled={sheetBusy} style={outlineButton}>Kiểm tra kết nối ghi</button>}
+              {link && <a href={link} target="_blank" rel="noreferrer" style={{ ...outlineButton, display: "inline-flex", alignItems: "center", textDecoration: "none" }}>Mở Google Sheet để sửa</a>}
             </div>
-            {sheetNote && <div style={{ marginTop: 8, fontSize: 12.5, fontWeight: 600, color: sheetNote.ok ? "#3D7A4E" : "#B3261E" }}>{sheetNote.ok ? "✅ " : "❌ "}{sheetNote.message}</div>}
+            {sheetNote && <div style={{ marginTop: 8, fontSize: 12.5, fontWeight: 600, color: sheetNote.ok ? "#3D7A4E" : "#B3261E" }}>{sheetNote.ok ? "" : ""}{sheetNote.message}</div>}
             {((s.skipped && s.skipped.length > 0) || (s.warnings && s.warnings.length > 0)) && (
               <details style={{ marginTop: 8 }}>
                 <summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 600, color: "#8A6D00" }}>Xem dòng bị bỏ qua / cảnh báo trong Sheet</summary>
@@ -1827,7 +1870,7 @@ function App() {
         {fromUnanswered && (
           <div className="field wide">
             <div className="inline-ok" style={{ background: "#eef7ff", color: "#246ba5", fontWeight: 400 }}>
-              ❓ Đang xử lý câu hỏi chưa trả lời: <strong>“{fromUnanswered.question}”</strong>.{" "}
+              Đang xử lý câu hỏi chưa trả lời: <strong>“{fromUnanswered.question}”</strong>.{" "}
               {fromUnanswered.asAlias
                 ? <>Câu này đã được thêm vào ô "Cách hỏi khác" của <strong>{fromUnanswered.target}</strong>. Bấm <strong>Lưu</strong> để áp dụng; câu hỏi sẽ tự được đánh dấu "Đã xử lý".</>
                 : <>{fromUnanswered.withDraft && <strong>Câu trả lời bên dưới là bản nháp do AI soạn — hãy kiểm tra kỹ trước khi lưu. </strong>}Sau khi bấm <strong>Lưu</strong>, câu hỏi này sẽ tự được đánh dấu "Đã xử lý".</>}{" "}
@@ -1849,7 +1892,7 @@ function App() {
           <div className="alias-head">
             <span>Cách hỏi khác</span>
             <span style={{ display: "inline-flex", gap: 6 }}>
-              <button type="button" className="btn secondary alias-add" disabled={suggestingAliases} onClick={() => suggestAliases(f.title, f.content, setF)}>{suggestingAliases ? "⏳ AI đang nghĩ..." : "🤖 AI gợi ý"}</button>
+              <button type="button" className="btn secondary alias-add" disabled={suggestingAliases} onClick={() => suggestAliases(f.title, f.content, setF)}>{suggestingAliases ? "AI đang nghĩ..." : "AI gợi ý"}</button>
               <button type="button" className="btn secondary alias-add" onClick={() => setAliasRows([...aliasRows, ""])}>＋ Thêm cách hỏi</button>
             </span>
           </div>
@@ -1889,7 +1932,7 @@ function App() {
                   if (url) insertImageIntoContent(taRef, f.content, setContent, url);
                 }}
               />
-              <button type="button" title={noUpload ? "Đang ghi vào Google Sheet: không tải ảnh từ máy lên được" : "Chèn ảnh (chọn file, tự tải lên và chèn ngay vào vị trí con trỏ)"} disabled={uploadingImage || noUpload} onClick={() => quickRef.current && quickRef.current.click()}>{uploadingImage ? "⏳" : "🖼"}</button>
+              <button type="button" title={noUpload ? "Đang ghi vào Google Sheet: không tải ảnh từ máy lên được" : "Chèn ảnh (chọn file, tự tải lên và chèn ngay vào vị trí con trỏ)"} disabled={uploadingImage || noUpload} onClick={() => quickRef.current && quickRef.current.click()}>{uploadingImage ? "" : ""}</button>
             </div>
             <textarea
               ref={taRef}
@@ -1905,7 +1948,7 @@ function App() {
           <p className="hint">Định dạng: **đậm**, *nghiêng*, __gạch chân__; "- " / "• " / "1. " đầu dòng tạo danh sách; gõ "-&gt;" tự thành →. Link ảnh nằm riêng 1 dòng sẽ hiện thành ảnh đúng vị trí đó.</p>
           {f.content.trim() && (
             <>
-              <div className="preview-label">👁 Xem trước (đúng như khi chatbot trả lời):</div>
+              <div className="preview-label">Xem trước (đúng như khi chatbot trả lời):</div>
               <div className="preview-box">{renderFormattedBlock(f.content, isEdit ? "preview-edit" : "preview-add", setLightboxSrc)}</div>
             </>
           )}
@@ -1961,6 +2004,7 @@ function App() {
   const unCur = Math.min(unPage, unPages);
   const unRows = filteredUnanswered.slice((unCur - 1) * unSize, unCur * unSize);
   const allUnSelected = filteredUnanswered.length > 0 && filteredUnanswered.every((u) => selectedUn.has(u.id));
+  const greetParts = splitGreeting(settings.greeting || DEFAULT_GREETING);
   const apKey = apSearch.trim().toLowerCase();
   const apFiltered = kbEntries.filter((e) => (apCat === "ALL" || e.category === apCat) && (!apKey || (e.title + " " + (e.aliases || []).join(" ")).toLowerCase().includes(apKey)));
   const apPages = Math.max(1, Math.ceil(apFiltered.length / apSize));
@@ -2096,8 +2140,8 @@ function App() {
                   {unansweredMeta && (
                     <div className="unanswered-note" style={{ background: unansweredMeta.webhookConfigured ? "#eaf5ec" : "#fff6ec" }}>
                       {unansweredMeta.webhookConfigured
-                        ? "✅ Mỗi câu hỏi mới cũng được gửi sang nơi lưu bên ngoài (webhook), nên không mất khi server khởi động lại."
-                        : "⚠️ Chưa cấu hình nơi lưu bền vững (biến UNANSWERED_WEBHOOK_URL). Trên gói Free của Render, danh sách này sẽ mất khi server ngủ hoặc khởi động lại — hãy cấu hình webhook (xem README)."}
+                        ? "Mỗi câu hỏi mới cũng được gửi sang nơi lưu bên ngoài (webhook), nên không mất khi server khởi động lại."
+                        : "Chưa cấu hình nơi lưu bền vững (biến UNANSWERED_WEBHOOK_URL). Trên gói Free của Render, danh sách này sẽ mất khi server ngủ hoặc khởi động lại — hãy cấu hình webhook (xem README)."}
                       {" "}Server khởi động lúc {unansweredMeta.startedAt ? new Date(unansweredMeta.startedAt).toLocaleString("vi-VN") : "—"}.
                     </div>
                   )}
@@ -2107,11 +2151,6 @@ function App() {
                     <input id="selectAllUnanswered" type="checkbox" checked={allUnSelected} onChange={(e) => setSelectedUn(e.target.checked ? new Set(filteredUnanswered.map((u) => u.id)) : new Set())} /> Chọn tất cả
                   </label>
                   <button type="button" id="deleteSelectedUnanswered" className="btn secondary delete-outline delete-icon-only delete-selected" title="Xóa mục đã chọn" aria-label="Xóa mục đã chọn" disabled={selectedUn.size === 0} onClick={() => deleteUnansweredMany([...selectedUn])}><IconTrash /></button>
-                  <button type="button" id="exportUnanswered" className="btn secondary" title="Xuất Excel đúng định dạng file nhập: điền câu trả lời rồi nhập lại" onClick={exportUnansweredExcel}>⇩ Xuất Excel</button>
-                  <button type="button" className="btn secondary" disabled={unansweredLoading} onClick={() => loadUnanswered()}>{unansweredLoading ? "⏳ Đang tải..." : "↻ Làm mới"}</button>
-                  <button type="button" className="btn secondary" title="Chạy lại tìm kiếm với tài liệu hiện tại, tự đóng những câu đã có đáp án" onClick={recheckUnanswered}>✅ Tự đóng câu đã có đáp án</button>
-                  {sheetMode && (sheetStatus.editUrl || sheetStatus.sheetUrl) && <a href={sheetStatus.editUrl || sheetStatus.sheetUrl} target="_blank" rel="noreferrer" className="btn secondary" style={{ display: "inline-flex", alignItems: "center", textDecoration: "none" }}>📝 Mở Google Sheet</a>}
-                  {unansweredCounts.closed > 0 && <button type="button" className="btn secondary" onClick={cleanClosedUnanswered}>🧹 Dọn đã xử lý</button>}
                 </div>
               </div>
               <div className="status-tabs" role="tablist">
@@ -2123,10 +2162,10 @@ function App() {
                     </button>
                   ))}
               </div>
-              {unansweredNote && <div className={"note-line " + (unansweredNote.ok ? "ok" : "err")} style={{ marginTop: 0, marginBottom: 12 }}>{unansweredNote.ok ? "✅ " : "❌ "}{unansweredNote.message}</div>}
-              {unansweredError && <div className="inline-alert" style={{ marginBottom: 12 }}>❌ {unansweredError}</div>}
+              {unansweredNote && <div className={"note-line " + (unansweredNote.ok ? "ok" : "err")} style={{ marginTop: 0, marginBottom: 12 }}>{unansweredNote.ok ? "" : ""}{unansweredNote.message}</div>}
+              {unansweredError && <div className="inline-alert" style={{ marginBottom: 12 }}>{unansweredError}</div>}
               <div id="unansweredList" className="unanswered-list">
-                {!unansweredError && unRows.length === 0 && <div className="empty">{(unansweredFilter === "new" || unansweredFilter === "open") ? "🎉 Hiện chưa có câu hỏi nào cần xử lý." : "Không có câu hỏi ở trạng thái này"}</div>}
+                {!unansweredError && unRows.length === 0 && <div className="empty">{(unansweredFilter === "new" || unansweredFilter === "open") ? "Hiện chưa có câu hỏi nào cần xử lý." : "Không có câu hỏi ở trạng thái này"}</div>}
                 {unRows.map((u) => {
                   const others = (u.samples || []).filter((x) => x !== u.question);
                   const badge = u.status === "resolved" ? "handled" : u.status === "ignored" ? "ignored" : needsAttention(u) ? "" : reasonCount(u, "ai_answered") > 0 ? "ai" : "";
@@ -2147,22 +2186,22 @@ function App() {
                               <span key={k} className={"reason-chip" + (k === "ai_unknown" || k === "escalated" ? " warn" : "")}>{UNANSWERED_REASON_LABELS[k]} ×{reasonCount(u, k)}</span>
                             ))}
                           </div>
-                          {others.length > 0 && <div className="unanswered-note">🔀 Các cách hỏi khác: {others.join(" · ")}</div>}
-                          {u.nearTitles && u.nearTitles.length > 0 && <div className="unanswered-note">📄 Đã gợi ý nhưng chưa đúng ý: {u.nearTitles.join(" · ")}</div>}
+                          {others.length > 0 && <div className="unanswered-note">Các cách hỏi khác: {others.join(" · ")}</div>}
+                          {u.nearTitles && u.nearTitles.length > 0 && <div className="unanswered-note">Đã gợi ý nhưng chưa đúng ý: {u.nearTitles.join(" · ")}</div>}
                           {u.draftAnswer && (
                             <details className="draft-box">
-                              <summary>🤖 Xem bản nháp do AI soạn (cần kiểm tra trước khi dùng)</summary>
+                              <summary>Xem bản nháp do AI soạn (cần kiểm tra trước khi dùng)</summary>
                               <div>{u.draftAnswer}</div>
                             </details>
                           )}
-                          {u.note && <div className="unanswered-note">📝 {u.note}</div>}
+                          {u.note && <div className="unanswered-note">{u.note}</div>}
                           <div className="unanswered-actions">
                             {u.status === "new" ? (
                               <>
                                 {sheetReadOnly ? (
                                   <>
-                                    <button type="button" className="btn" data-copy-row={u.id} onClick={() => copyRowForSheet(u, false)}>📋 Sao chép để dán vào Sheet</button>
-                                    {u.draftAnswer && <button type="button" className="btn secondary" onClick={() => copyRowForSheet(u, true)}>📋 Sao chép kèm bản nháp AI</button>}
+                                    <button type="button" className="btn" data-copy-row={u.id} onClick={() => copyRowForSheet(u, false)}>Sao chép để dán vào Sheet</button>
+                                    {u.draftAnswer && <button type="button" className="btn secondary" onClick={() => copyRowForSheet(u, true)}>Sao chép kèm bản nháp AI</button>}
                                   </>
                                 ) : (
                                   <>
@@ -2171,11 +2210,11 @@ function App() {
                                   </>
                                 )}
                                 <button type="button" className="btn secondary" data-add-alias={u.id} onClick={() => { setApCat("ALL"); setApSearch(""); setApPage(1); setAliasPicker({ rec: u }); }}>Thêm vào cách hỏi khác</button>
-                                <button type="button" className="btn secondary" onClick={() => updateUnanswered(u.id, "resolved", "Đã xử lý thủ công")}>✓ Đánh dấu đã xử lý</button>
+                                <button type="button" className="btn secondary" onClick={() => updateUnanswered(u.id, "resolved", "Đã xử lý thủ công")}>Đánh dấu đã xử lý</button>
                                 <button type="button" className="btn secondary ignore" data-ignore-unanswered={u.id} onClick={() => updateUnanswered(u.id, "ignored")}>Bỏ qua</button>
                               </>
                             ) : (
-                              <button type="button" className="btn secondary" onClick={() => updateUnanswered(u.id, "new", "")}>↩︎ Mở lại</button>
+                              <button type="button" className="btn secondary" onClick={() => updateUnanswered(u.id, "new", "")}>Mở lại</button>
                             )}
                             <button type="button" className="btn secondary delete-outline delete-icon-only delete-one" title="Xóa" aria-label="Xóa" data-delete-unanswered={u.id} onClick={() => deleteUnanswered(u.id)}><IconTrash /></button>
                           </div>
@@ -2201,93 +2240,79 @@ function App() {
                 <label className="field expert-contact"><span>Email chuyên gia hỗ trợ (dự phòng)</span><input type="email" placeholder="vd: hotro@congty.vn" value={settingsForm.expertEmail || ""} onChange={(e) => setSettingsForm({ ...settingsForm, expertEmail: e.target.value })} /><small>Dùng khi chưa kết nối Zalo OA (xem README): câu hỏi chuyển chuyên gia sẽ được ghi lại ở tab Cài đặt hệ thống.</small></label>
                 {adminError && <div className="inline-alert">{adminError}</div>}
               </div>
-              <footer><button type="button" id="saveConversation" className="btn" onClick={saveSettings}>{settingsSaved ? "✅ Đã lưu" : "Lưu cấu hình"}</button></footer>
+              <footer><button type="button" id="saveConversation" className="btn" onClick={saveSettings}>{settingsSaved ? "Đã lưu" : "Lưu cấu hình"}</button></footer>
             </section>
           )}
 
           {tab === "chat" && (
-          <div className="card chat-wrap" style={{ display: "flex", flexDirection: "column", height: 600, padding: 0 }}>
-            <div style={{ padding: "10px 20px", borderBottom: "1px solid #e9eef3", fontSize: 11.5, color: "#718096" }}>
-              💡 Chatbot tìm câu trả lời có sẵn trong tài liệu trước (miễn phí, tức thì) — chỉ gọi AI khi bạn chủ động bấm "Hỏi AI". Câu hỏi mà chatbot chưa trả lời được sẽ được ghi lại (không kèm thông tin người hỏi) để bổ sung tài liệu.
-            </div>
-            <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
-              {messages.length === 0 && (
-                <div>
-                  <div style={bubbleAssistant}>{settings.greeting || DEFAULT_GREETING}</div>
+            <>
+              <p className="chat-hint">Chatbot tìm câu trả lời có sẵn trong tài liệu trước (miễn phí, tức thì), chỉ gọi AI khi bạn chủ động bấm "Hỏi AI". Câu hỏi chatbot chưa trả lời được sẽ được ghi lại (không kèm thông tin người hỏi) để bổ sung tài liệu.</p>
+              <section className="chat-panel" id="chatPanel">
+                <header className="phead"><b>Trợ lý hỗ trợ</b></header>
+                <section className="pbody" ref={scrollRef}>
+                  <h2>{greetParts.title}</h2>
+                  {greetParts.sub && <p>{greetParts.sub}</p>}
                   {suggestedEntries.length > 0 && (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
-                      {suggestedEntries.map((e) => <button key={e.id} type="button" className="chip" data-suggested-chip={e.id} onClick={() => sendMessage(e.title)}>{e.title}</button>)}
-                    </div>
-                  )}
-                </div>
-              )}
-              {messages.map((m, i) => (
-                <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: m.role === "user" ? "flex-end" : "flex-start", gap: 6, maxWidth: "100%" }}>
-                  {m.role === "assistant" && m.source === "kb" && (
-                    <div style={{ fontSize: 10.5, fontWeight: 700, color: "#3D7A4E", textTransform: "uppercase", letterSpacing: "0.03em" }}>🔍 Từ tài liệu — không dùng AI</div>
-                  )}
-                  {m.role === "assistant" && m.source === "ai" && (
-                    <div style={{ fontSize: 10.5, fontWeight: 700, color: "#076ab7", textTransform: "uppercase", letterSpacing: "0.03em" }}>🤖 Claude AI</div>
-                  )}
-                  {m.role === "assistant" && m.source === "ambiguous" && (
-                    <div style={{ fontSize: 10.5, fontWeight: 700, color: "#8A6D00", textTransform: "uppercase", letterSpacing: "0.03em" }}>🔍 Có vài mục gần giống nhau</div>
-                  )}
-                  <div style={m.role === "user" ? bubbleUser : bubbleAssistant}>
-                    {m.role === "assistant" ? renderMessageContent(m.text) : m.text}
-                    {m.role === "assistant" && m.source === "kb" && m.videoUrl && (
-                      <div style={{ marginTop: 8 }}>
-                        <a href={m.videoUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, color: "inherit", fontWeight: 700 }}>🎥 Video hướng dẫn ↗</a>
-                      </div>
-                    )}
-                    {m.role === "assistant" && m.source === "kb" && Array.isArray(m.images) && m.images.map((url, idx) => (
-                      <SafeImage key={idx} src={url} alt={m.matchedTitle || "Hình minh hoạ"} onClick={() => setLightboxSrc(url)} style={{ maxWidth: "100%", maxHeight: 200, borderRadius: 8, display: "block", marginTop: 8, cursor: "zoom-in" }} />
-                    ))}
-                  </div>
-
-                  {m.role === "assistant" && m.source === "ambiguous" && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6, width: "100%", maxWidth: 480 }}>
-                      {m.candidates.map((c, ci) => (
-                        <button
-                          key={ci}
-                          onClick={() => selectAmbiguousCandidate(i, c)}
-                          style={{ textAlign: "left", background: "#FFFFFF", border: "1px solid #dce4ed", borderRadius: 8, padding: "8px 12px", fontSize: 13, cursor: "pointer", color: "#076ab7", lineHeight: 1.4 }}
-                        >
-                          {c.title}
-                        </button>
+                    <div className="quick">
+                      {suggestedEntries.map((e) => (
+                        <button key={e.id} type="button" data-suggested-chip={e.id} title={e.title} onClick={() => sendMessage(e.title)}><span>{e.title}</span></button>
                       ))}
                     </div>
                   )}
-
-                  {m.role === "assistant" && (m.source === "nomatch" || m.source === "error" || m.source === "ambiguous") && (
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <button onClick={() => askAI(i)} disabled={m.asking} style={escalateBtn(false)}>
-                        {m.asking ? "⏳ Đang hỏi AI..." : m.source === "ambiguous" ? "🤖 Không đúng ý, hỏi AI (Claude)" : "🤖 Hỏi AI (Claude)"}
-                      </button>
-                      <button onClick={() => escalateQuestion(i)} disabled={m.escalated || m.escalating} style={escalateBtn(m.escalated)}>
-                        {m.escalating ? "⏳ Đang gửi..." : m.escalated ? "✅ Đã gửi cho chuyên gia" : "✉️ Gửi câu hỏi cho chuyên gia"}
-                      </button>
-                    </div>
-                  )}
-                  {m.role === "assistant" && m.source === "kb" && (
-                    <button onClick={() => askAI(i)} disabled={m.asking} style={{ background: "transparent", border: "none", color: "#718096", fontSize: 11.5, textDecoration: "underline", cursor: "pointer", padding: 0 }}>
-                      {m.asking ? "⏳ Đang hỏi AI..." : "Chưa đúng ý bạn? Hỏi AI thêm"}
-                    </button>
-                  )}
-                  {m.role === "assistant" && m.source === "ai" && m.needsEscalation && (
-                    <button onClick={() => escalateQuestion(i)} disabled={m.escalated || m.escalating} style={escalateBtn(m.escalated)}>
-                      {m.escalating ? "⏳ Đang gửi..." : m.escalated ? "✅ Đã gửi cho chuyên gia" : "✉️ Gửi câu hỏi này cho chuyên gia"}
-                    </button>
-                  )}
-                  {m.role === "assistant" && m.escalateError && <div style={{ fontSize: 11, color: "#B3261E" }}>{m.escalateError}</div>}
+                  <div className="messages">
+                    {messages.map((m, i) => (
+                      <div key={i}>
+                        {m.role === "user" ? (
+                          <div className="msg">{m.text}</div>
+                        ) : (
+                          <>
+                            {m.source === "kb" && <div className="msg-caption">Từ tài liệu — không dùng AI</div>}
+                            {m.source === "ai" && <div className="msg-caption ai">Claude AI</div>}
+                            <div className="msg bot">
+                              {renderMessageContent(m.text)}
+                              {m.source === "kb" && m.videoUrl && (
+                                <div style={{ marginTop: 8 }}><a href={m.videoUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, color: "#0869b6", fontWeight: 700 }}>Video hướng dẫn ↗</a></div>
+                              )}
+                              {m.source === "kb" && Array.isArray(m.images) && m.images.map((url, idx) => (
+                                <SafeImage key={idx} src={url} alt={m.matchedTitle || "Hình minh hoạ"} onClick={() => setLightboxSrc(url)} style={{ maxWidth: "100%", maxHeight: 200, borderRadius: 8, display: "block", marginTop: 8, cursor: "zoom-in" }} />
+                              ))}
+                            </div>
+                            {m.source === "ambiguous" && (
+                              <div className="answer-options">
+                                {m.candidates.map((c, ci) => <button key={ci} type="button" onClick={() => selectAmbiguousCandidate(i, c)}>{c.title}</button>)}
+                                <button type="button" disabled={m.asking} onClick={() => askAI(i)}>{m.asking ? "Đang hỏi AI..." : "Không đúng ý, hỏi AI (Claude)"}</button>
+                                <button type="button" className={"expert" + (m.escalated ? " selected" : "")} disabled={m.escalated || m.escalating} onClick={() => escalateQuestion(i)}>{m.escalating ? "Đang gửi..." : m.escalated ? "Đã gửi cho chuyên gia" : "Liên hệ chuyên gia"}</button>
+                              </div>
+                            )}
+                            {(m.source === "nomatch" || m.source === "error") && (
+                              <div className="answer-options">
+                                <button type="button" disabled={m.asking} onClick={() => askAI(i)}>{m.asking ? "Đang hỏi AI..." : "Hỏi AI (Claude)"}</button>
+                                <button type="button" className={"expert" + (m.escalated ? " selected" : "")} disabled={m.escalated || m.escalating} onClick={() => escalateQuestion(i)}>{m.escalating ? "Đang gửi..." : m.escalated ? "Đã gửi cho chuyên gia" : "Liên hệ chuyên gia"}</button>
+                              </div>
+                            )}
+                            {m.source === "kb" && (
+                              <button type="button" className="msg-link" disabled={m.asking} onClick={() => askAI(i)}>{m.asking ? "Đang hỏi AI..." : "Chưa đúng ý bạn? Hỏi AI thêm"}</button>
+                            )}
+                            {m.source === "ai" && m.needsEscalation && (
+                              <div className="answer-options">
+                                <button type="button" className={"expert" + (m.escalated ? " selected" : "")} disabled={m.escalated || m.escalating} onClick={() => escalateQuestion(i)}>{m.escalating ? "Đang gửi..." : m.escalated ? "Đã gửi cho chuyên gia" : "Liên hệ chuyên gia"}</button>
+                              </div>
+                            )}
+                            {m.escalateError && <div className="msg-error">{m.escalateError}</div>}
+                          </>
+                        )}
+                      </div>
+                    ))}
+                    {loading && <div className="msg bot">Đang hỏi AI...</div>}
+                  </div>
+                </section>
+                <div className="composer">
+                  <input placeholder="Nhập tin nhắn..." aria-label="Nhập tin nhắn" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown} />
+                  <button type="button" className="send" aria-label="Gửi tin nhắn" disabled={loading} onClick={() => sendMessage()}>➤</button>
                 </div>
-              ))}
-              {loading && <div style={{ alignSelf: "flex-start", color: "#5b6b7e", fontSize: 13 }}>⏳ Đang hỏi AI...</div>}
-            </div>
-            <div style={{ display: "flex", gap: 8, padding: 14, borderTop: "1px solid #e9eef3" }}>
-              <input style={{ ...inputStyle, marginBottom: 0, flex: 1 }} placeholder="Nhập câu hỏi của bạn..." value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown} />
-              <button onClick={sendMessage} disabled={loading} style={{ ...primaryButtonStyle, width: "auto", margin: 0, padding: "0 16px" }}>➤</button>
-            </div>
-          </div>
+              </section>
+            </>
+
           )}
 
           {tab === "settings" && (
@@ -2295,9 +2320,9 @@ function App() {
             {renderMissingImagesWarning()}
             {renderSheetPanel()}
             <div style={{ ...card, border: "1px solid #F0D9BE", background: "#FFF9F0" }}>
-              <div style={sectionTitle}>🗄️ Sao lưu &amp; khôi phục dữ liệu</div>
+              <div style={sectionTitle}>Sao lưu &amp; khôi phục dữ liệu</div>
               <div style={{ fontSize: 12.5, color: "#5b6b7e", lineHeight: 1.6, marginBottom: 12 }}>
-                ⚠️ Dữ liệu (tài liệu, cài đặt, ảnh) lưu trên ổ đĩa tạm của server — <strong>gói Free của Render xoá sạch mỗi khi server ngủ hoặc deploy lại</strong>. Để khỏi phải khôi phục thủ công: sau mỗi lần chỉnh sửa quan trọng, bấm <strong>Tải file sao lưu</strong>, rồi <strong>upload file đó vào thư mục gốc của repo GitHub</strong> (cạnh server.js). Mỗi lần khởi động, server tự nạp lại từ file sao lưu mới nhất. Chỉnh sửa chưa được đưa lên GitHub sẽ mất khi server khởi động lại. Nút <strong>Khôi phục</strong> bên dưới vẫn dùng được khi cần khôi phục bằng tay.
+                Dữ liệu (tài liệu, cài đặt, ảnh) lưu trên ổ đĩa tạm của server — <strong>gói Free của Render xoá sạch mỗi khi server ngủ hoặc deploy lại</strong>. Để khỏi phải khôi phục thủ công: sau mỗi lần chỉnh sửa quan trọng, bấm <strong>Tải file sao lưu</strong>, rồi <strong>upload file đó vào thư mục gốc của repo GitHub</strong> (cạnh server.js). Mỗi lần khởi động, server tự nạp lại từ file sao lưu mới nhất. Chỉnh sửa chưa được đưa lên GitHub sẽ mất khi server khởi động lại. Nút <strong>Khôi phục</strong> bên dưới vẫn dùng được khi cần khôi phục bằng tay.
               </div>
               {seedStatus && (
                 <div
@@ -2308,33 +2333,33 @@ function App() {
                   }}
                 >
                   {seedStatus.error ? (
-                    <>❌ Không nạp được file <strong>{seedStatus.file}</strong>: {seedStatus.error}</>
+                    <>Không nạp được file <strong>{seedStatus.file}</strong>: {seedStatus.error}</>
                   ) : seedStatus.restored ? (
-                    <>✅ Lần khởi động này server đã tự nạp lại <strong>{seedStatus.entries} mục + {seedStatus.images} ảnh</strong> từ file <strong>{seedStatus.file}</strong> (lúc {new Date(seedStatus.at).toLocaleString("vi-VN")}). Chỉnh sửa sau thời điểm tạo file này sẽ mất nếu server khởi động lại — nhớ tải và upload file sao lưu mới.</>
+                    <>Lần khởi động này server đã tự nạp lại <strong>{seedStatus.entries} mục + {seedStatus.images} ảnh</strong> từ file <strong>{seedStatus.file}</strong> (lúc {new Date(seedStatus.at).toLocaleString("vi-VN")}). Chỉnh sửa sau thời điểm tạo file này sẽ mất nếu server khởi động lại — nhớ tải và upload file sao lưu mới.</>
                   ) : seedStatus.found ? (
-                    <>ℹ️ Có file <strong>{seedStatus.file}</strong> trong GitHub nhưng lần khởi động này chưa dùng, vì server đã có sẵn dữ liệu (để không ghi đè lên chỉnh sửa của bạn).</>
+                    <>Có file <strong>{seedStatus.file}</strong> trong GitHub nhưng lần khởi động này chưa dùng, vì server đã có sẵn dữ liệu (để không ghi đè lên chỉnh sửa của bạn).</>
                   ) : (
-                    <>ℹ️ Chưa thấy file sao lưu trong GitHub. Hãy upload file sao lưu (tên bắt đầu bằng "sao-luu-du-lieu-chatbot-" hoặc đặt tên <strong>seed-backup.json</strong>) vào thư mục gốc của repo để server tự nạp lại mỗi lần khởi động.</>
+                    <>Chưa thấy file sao lưu trong GitHub. Hãy upload file sao lưu (tên bắt đầu bằng "sao-luu-du-lieu-chatbot-" hoặc đặt tên <strong>seed-backup.json</strong>) vào thư mục gốc của repo để server tự nạp lại mỗi lần khởi động.</>
                   )}
                 </div>
               )}
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button type="button" onClick={downloadBackup} disabled={backingUp} style={{ ...primaryButtonStyle, width: "auto", flex: "1 1 200px", marginTop: 0 }}>
-                  {backingUp ? "⏳ Đang chuẩn bị file (kèm ảnh)..." : "💾 Tải file sao lưu"}
+                  {backingUp ? "Đang chuẩn bị file (kèm ảnh)..." : "Tải file sao lưu"}
                 </button>
                 <input ref={backupInputRef} type="file" accept=".json" onChange={restoreBackup} style={{ display: "none" }} />
                 <button type="button" onClick={() => backupInputRef.current && backupInputRef.current.click()} disabled={restoringBackup} style={{ ...outlineButton, height: "auto", padding: "10px 16px", flex: "1 1 200px" }}>
-                  {restoringBackup ? "⏳ Đang khôi phục..." : "📤 Khôi phục từ file sao lưu"}
+                  {restoringBackup ? "Đang khôi phục..." : "Khôi phục từ file sao lưu"}
                 </button>
               </div>
               {backupResult && (
                 <div style={{ marginTop: 10, fontSize: 12.5, fontWeight: 600, color: backupResult.ok ? "#3D7A4E" : "#B3261E" }}>
-                  {backupResult.ok ? "✅ " : "❌ "}{backupResult.message}
+                  {backupResult.ok ? "" : ""}{backupResult.message}
                 </div>
               )}
             </div>
             <div style={card}>
-              <div style={sectionTitle}>✉️ Câu hỏi đã gửi chuyên gia ({escalations.length})</div>
+              <div style={sectionTitle}>Câu hỏi đã gửi chuyên gia ({escalations.length})</div>
               {escalations.length === 0 ? (
                 <div style={{ fontSize: 13, color: "#718096", fontStyle: "italic" }}>Chưa có câu hỏi nào.</div>
               ) : (
@@ -2350,7 +2375,7 @@ function App() {
             </div>
 
             <div style={card}>
-              <div style={sectionTitle}>🔑 Mã quản trị</div>
+              <div style={sectionTitle}>Mã quản trị</div>
               <div style={{ fontSize: 12.5, color: "#5b6b7e", marginBottom: 6 }}>
                 Cần để sửa tài liệu / cài đặt (nếu server có bật ADMIN_TOKEN). Mỗi trình duyệt nhập 1 lần.
               </div>
@@ -2368,7 +2393,7 @@ function App() {
             <div className="dialog-body">{renderQuestionFormFields(!!editingId)}</div>
             <footer className="dialog-foot">
               <button type="button" className="btn secondary" onClick={() => (editingId ? cancelEdit() : closeAdd())}>Hủy</button>
-              <button type="button" id="saveQuestion" className="btn" disabled={uploadingImage} onClick={editingId ? saveEditEntry : addEntry}>{uploadingImage ? "⏳ Đang tải ảnh..." : "Lưu"}</button>
+              <button type="button" id="saveQuestion" className="btn" disabled={uploadingImage} onClick={editingId ? saveEditEntry : addEntry}>{uploadingImage ? "Đang tải ảnh..." : "Lưu"}</button>
             </footer>
           </section>
         </div>
@@ -2385,7 +2410,7 @@ function App() {
                   <div className="field wide"><span>Cách hỏi khác ({detailEntry.aliases.length})</span><div className="chips">{detailEntry.aliases.map((a, i) => <span key={i}>{a}</span>)}</div></div>
                 )}
                 <div className="field wide"><span>Câu trả lời</span><div className="answer-box">{renderFormattedBlock(detailEntry.content, "detail-" + detailEntry.id, setLightboxSrc)}</div></div>
-                {detailEntry.videoUrl && <div className="field wide"><span>Link video</span><a href={detailEntry.videoUrl} target="_blank" rel="noreferrer" style={{ color: "#076ab7", fontWeight: 600 }}>🎥 {detailEntry.videoUrl} ↗</a></div>}
+                {detailEntry.videoUrl && <div className="field wide"><span>Link video</span><a href={detailEntry.videoUrl} target="_blank" rel="noreferrer" style={{ color: "#076ab7", fontWeight: 600 }}>{detailEntry.videoUrl} ↗</a></div>}
                 {getGalleryImages(detailEntry).length > 0 && (
                   <div className="field wide"><span>Ảnh đính kèm ({getGalleryImages(detailEntry).length})</span><div className="thumb-grid">{getGalleryImages(detailEntry).map((url, i) => <SafeImage key={i} src={url} alt={detailEntry.title} onClick={() => setLightboxSrc(url)} style={{ maxWidth: 220, maxHeight: 150, borderRadius: 6, border: "1px solid #dce4ed", cursor: "zoom-in" }} />)}</div></div>
                 )}
@@ -2406,15 +2431,15 @@ function App() {
             <div className="dialog-body">
               <div className="seg">
                 <button type="button" className={importMode === "excel" ? "active" : ""} onClick={() => { setImportMode("excel"); setImportResult(null); }}>⇧ File Excel</button>
-                <button type="button" className={importMode === "paste" ? "active" : ""} onClick={() => { setImportMode("paste"); setImportResult(null); }}>📋 Dán từ Excel</button>
+                <button type="button" className={importMode === "paste" ? "active" : ""} onClick={() => { setImportMode("paste"); setImportResult(null); }}>Dán từ Excel</button>
               </div>
               {importMode === "excel" ? (
                 <>
                   <p className="hint" style={{ marginTop: 0, marginBottom: 12 }}>File Excel có các cột: <strong>Câu hỏi</strong> | <strong>Danh mục</strong> | <strong>Câu trả lời</strong> | <strong>Link video</strong> | <strong>Link ảnh</strong> | <strong>Cách hỏi khác</strong> (nhiều giá trị cách nhau bằng dấu |). Chỉ <strong>thêm mới</strong> vào danh sách hiện có.</p>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button type="button" className="btn secondary" onClick={downloadTemplate}>📄 Tải file mẫu</button>
+                    <button type="button" className="btn secondary" onClick={downloadTemplate}>Tải file mẫu</button>
                     <input ref={fileInputRef} type="file" accept=".xlsx,.xls" hidden onChange={handleExcelFile} />
-                    <button type="button" className="btn" onClick={() => fileInputRef.current && fileInputRef.current.click()}>⬆️ Chọn file Excel</button>
+                    <button type="button" className="btn" onClick={() => fileInputRef.current && fileInputRef.current.click()}>Chọn file Excel</button>
                   </div>
                   {importResult && importResult.source === "excel" && (
                     <div className={"note-line " + (importResult.error ? "err" : "ok")}>
@@ -2429,7 +2454,7 @@ function App() {
                     <label className="field wide"><span>Danh mục mặc định</span><select value={bulkCategory} onChange={(e) => setBulkCategory(e.target.value)}>{allCategories.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}</select></label>
                     <label className="field wide"><span>Dán dữ liệu vào đây</span><textarea style={{ minHeight: 150, fontFamily: "monospace", fontSize: 12.5 }} value={bulkText} onChange={(e) => { setBulkText(e.target.value); setImportResult(null); }} /></label>
                   </div>
-                  <div style={{ marginTop: 12 }}><button type="button" className="btn" onClick={handleBulkImport}>📋 Nhập vào tài liệu</button></div>
+                  <div style={{ marginTop: 12 }}><button type="button" className="btn" onClick={handleBulkImport}>Nhập vào tài liệu</button></div>
                   {importResult && importResult.source === "paste" && (
                     <div className={"note-line " + (importResult.error ? "err" : "ok")}>
                       {importResult.error ? "Không nhận diện được cặp Câu hỏi - Câu trả lời nào." : `Đã nhập thành công ${importResult.added} mục.${importResult.skipped ? ` Bỏ qua ${importResult.skipped} dòng (trùng câu hỏi đã có trong Sheet hoặc thiếu nội dung).` : ""}`}
@@ -2556,7 +2581,7 @@ function SafeImage({ src, alt, onClick, style }) {
         title="Ảnh đã mất trên server, cần tải lại"
         style={{ ...style, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#FFF3E0", color: "#076ab7", fontSize: 11, textAlign: "center", padding: 6, border: "1px dashed #E0A458", cursor: "default" }}
       >
-        <span style={{ fontSize: 16 }}>⚠️</span>
+        <span style={{ fontSize: 16 }}></span>
         <span>Ảnh lỗi — cần tải lại</span>
       </div>
     );
