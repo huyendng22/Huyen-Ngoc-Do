@@ -105,7 +105,24 @@
 .unanswered-head-actions{flex-wrap:nowrap;flex:0 0 auto}.unanswered-head>div:first-child{flex:1;min-width:0}
 @media(max-width:740px){.unanswered-head-actions{flex-wrap:wrap}}
 
-.demo-frame{--blue:#0869b6;--blue2:#087cdb;--bg:#f3f6fc;--text:#273445;--muted:#697789;--line:#d9e1eb;--red:#ed5961;position:relative;aspect-ratio:1917/1078;max-height:calc(100vh - 150px);min-height:480px;overflow:hidden;border:1px solid #cfd9e5;border-radius:8px;background:#f4f6fa;color:#273445;font:14px Arial,sans-serif;box-shadow:0 4px 18px #173d6314}
+/* Thiết lập câu hỏi mở đầu */
+.oq-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) 38px;gap:8px;margin-bottom:8px;align-items:center}
+@media(max-width:740px){.oq-row{grid-template-columns:minmax(0,1fr) 34px}.oq-row .oq-question{grid-column:1 / 2;grid-row:2}.oq-row .alias-remove{grid-row:1 / 3;grid-column:2}}
+.oq-row .alias-remove{width:38px;min-width:0;padding:0;justify-self:end}
+
+/* ===== Chạy toàn màn hình: mọi tab dùng hết chiều ngang (không còn giới hạn 780-980px) ===== */
+.unanswered-card,.conversation-card{max-width:none;width:100%}
+.unanswered-head p{max-width:900px}
+.conversation-form{grid-template-columns:repeat(2,minmax(0,1fr));gap:22px 32px}
+.conversation-form .field{min-width:0}
+.conversation-form #openingSetup,.conversation-form .inline-alert{grid-column:1 / -1}
+.expert-contact{max-width:none}.expert-contact input{max-width:460px}
+.settings-stack{max-width:none;width:100%;grid-template-columns:repeat(auto-fit,minmax(520px,1fr));align-items:start;gap:18px}
+.chat-wrap{max-width:none}
+@media(max-width:1100px){.conversation-form{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:740px){.settings-stack{grid-template-columns:minmax(0,1fr)}}
+
+.demo-frame{--blue:#0869b6;--blue2:#087cdb;--bg:#f3f6fc;--text:#273445;--muted:#697789;--line:#d9e1eb;--red:#ed5961;position:relative;width:100%;height:clamp(520px,calc(100vh - 170px),1200px);overflow:hidden;border:1px solid #cfd9e5;border-radius:8px;background:#f4f6fa;color:#273445;font:14px Arial,sans-serif;box-shadow:0 4px 18px #173d6314}
 .demo-frame *{box-sizing:border-box}
 .demo-frame button,.demo-frame input,.demo-frame select{font:inherit}
 .demo-frame .demo-shot{display:block;width:100%;height:100%;object-fit:cover;object-position:left top;user-select:none;-webkit-user-drag:none}
@@ -118,7 +135,12 @@
 .demo-frame .chat-panel.popup{position:absolute;z-index:19;right:20px;bottom:100px;width:min(400px,calc(100% - 40px));height:min(580px,calc(100% - 124px));min-height:0;margin:0;border-radius:12px;box-shadow:0 10px 36px #173d6338;opacity:0;visibility:hidden;transform:translateY(14px) scale(.98);transform-origin:bottom right;transition:opacity .2s,transform .2s,visibility 0s .2s}
 .demo-frame .chat-panel.popup.open{opacity:1;visibility:visible;transform:none;transition:opacity .2s,transform .2s}
 .chat-panel .phead .pclose{border:0;background:none;font-size:26px;line-height:1;color:#8290a0;padding:0 2px}.chat-panel .phead .pclose:hover{color:#506174}
-@media(max-width:740px){.demo-frame{aspect-ratio:auto;max-height:none;min-height:0;height:600px}.demo-frame .chat-panel.popup{right:10px;width:calc(100% - 20px)}}
+@media(max-width:740px){.demo-frame{height:600px}.demo-frame .chat-panel.popup{right:10px;width:calc(100% - 20px)}}
+
+.demo-bar{display:flex;justify-content:space-between;align-items:center;gap:16px;margin:0 0 10px;color:#718096;font-size:12.5px;line-height:1.5}
+.demo-bar .btn{flex:0 0 auto;height:34px;padding:0 14px}
+.demo-frame.full{position:fixed;inset:0;z-index:1000;width:100vw;height:100vh;border:0;border-radius:0;box-shadow:none}
+.demo-exit{position:absolute;left:16px;bottom:16px;z-index:30;height:34px;padding:0 14px;border:1px solid #1677c8;border-radius:4px;background:#fff;color:#076ab7;font-weight:700;box-shadow:0 2px 8px #173d6326}
 
 </style>
 </head>
@@ -464,6 +486,7 @@ const UNANSWERED_REASON_LABELS = {
   escalated: "Đã chuyển chuyên gia",
 };
 
+const OQ_MAX = 6; // số câu hỏi mở đầu tối đa
 function IconEdit() {
   return (
     <svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect x="1" y="1" width="30" height="30" rx="6" fill="#eaf4ff" /><path d="M9.5 22.5l.9-3.6 8.9-8.9a1.5 1.5 0 012.1 0l.6.6a1.5 1.5 0 010 2.1l-8.9 8.9-3.6.9z" fill="none" stroke="#076ab7" strokeWidth="1.6" strokeLinejoin="round" /><path d="M17.8 11.6l2.6 2.6" stroke="#076ab7" strokeWidth="1.6" /></svg>
@@ -586,8 +609,8 @@ function App() {
 
   const [lightboxSrc, setLightboxSrc] = useState(null);
 
-  const [settings, setSettings] = useState({ greeting: DEFAULT_GREETING, expertEmail: "", noResultMessage: DEFAULT_NO_RESULT_MESSAGE, customCategories: [] });
-  const [settingsForm, setSettingsForm] = useState({ greeting: DEFAULT_GREETING, expertEmail: "", noResultMessage: DEFAULT_NO_RESULT_MESSAGE, customCategories: [] });
+  const [settings, setSettings] = useState({ greeting: DEFAULT_GREETING, expertEmail: "", noResultMessage: DEFAULT_NO_RESULT_MESSAGE, customCategories: [], openingQuestions: null });
+  const [settingsForm, setSettingsForm] = useState({ greeting: DEFAULT_GREETING, expertEmail: "", noResultMessage: DEFAULT_NO_RESULT_MESSAGE, customCategories: [], openingQuestions: null });
   const [settingsSaved, setSettingsSaved] = useState(false);
 
   const [escalations, setEscalations] = useState([]);
@@ -633,6 +656,15 @@ function App() {
   const [fabDragging, setFabDragging] = useState(false);
   const demoRef = useRef(null);
   const fabDrag = useRef({ active: false, moved: false, sx: 0, sy: 0, sr: 0, sb: 0 });
+  const [demoFull, setDemoFull] = useState(false);
+  useEffect(() => {
+    if (!demoFull) return undefined;
+    const onKey = (e) => { if (e.key === "Escape") setDemoFull(false); };
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
+  }, [demoFull]);
 
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -906,7 +938,7 @@ function App() {
   async function loadSettings() {
     try {
       const r = await fetch("/api/settings");
-      const data = { greeting: DEFAULT_GREETING, expertEmail: "", noResultMessage: DEFAULT_NO_RESULT_MESSAGE, customCategories: [], ...(await r.json()) };
+      const data = { greeting: DEFAULT_GREETING, expertEmail: "", noResultMessage: DEFAULT_NO_RESULT_MESSAGE, customCategories: [], openingQuestions: null, ...(await r.json()) };
       setSettings(data);
       setSettingsForm(data);
     } catch (e) {}
@@ -1400,7 +1432,7 @@ function App() {
 
   async function saveSettings() {
     setAdminError("");
-    const r = await fetch("/api/settings", { method: "PUT", headers: authHeaders(adminToken), body: JSON.stringify({ greeting: settingsForm.greeting, expertEmail: settingsForm.expertEmail, noResultMessage: settingsForm.noResultMessage }) });
+    const r = await fetch("/api/settings", { method: "PUT", headers: authHeaders(adminToken), body: JSON.stringify({ greeting: settingsForm.greeting, expertEmail: settingsForm.expertEmail, noResultMessage: settingsForm.noResultMessage, openingQuestions: Array.isArray(settingsForm.openingQuestions) ? settingsForm.openingQuestions : undefined }) });
     if (r.status === 401) { setAdminError("Sai mã quản trị — vào cuối tab này để nhập lại."); return; }
     const data = await r.json();
     setSettings(data.settings);
@@ -1780,6 +1812,12 @@ function App() {
   });
 
   // ===== Hàm cho giao diện mới =====
+  // Câu hỏi mở đầu (nút bấm dưới lời chào khi mở chat): lưu trong cài đặt hội thoại
+  function setOqList(list) { setSettingsForm((p) => ({ ...p, openingQuestions: list })); setSettingsSaved(false); }
+  function addOpeningQuestion() { if (oqList.length < OQ_MAX) setOqList([...oqList, { label: "", question: "" }]); }
+  function updateOpeningQuestion(i, patch) { setOqList(oqList.map((q, k) => (k === i ? { ...q, ...patch } : q))); }
+  function removeOpeningQuestion(i) { setOqList(oqList.filter((_, k) => k !== i)); }
+
   // Mascot nổi trong màn hình demo: bấm = mở/đóng chat, kéo = đổi vị trí (giới hạn trong khung)
   function fabPointerDown(e) {
     const frame = demoRef.current;
@@ -1867,6 +1905,14 @@ function App() {
 
   // "Thêm vào cách hỏi khác": chọn câu hỏi có sẵn để gắn câu hỏi chưa trả lời vào làm 1 cách hỏi khác
   async function chooseAliasTarget(entry) {
+    if (aliasPicker && aliasPicker.mode === "opening") {
+      setAliasPicker(null);
+      if (oqList.some((q) => String(q.question || "").trim().toLowerCase() === entry.title.trim().toLowerCase())) { toast("Câu hỏi này đã có trong danh sách mở đầu"); return; }
+      if (oqList.length >= OQ_MAX) { toast("Tối đa " + OQ_MAX + " câu hỏi mở đầu"); return; }
+      setOqList([...oqList, { label: "", question: entry.title }]);
+      toast("Đã thêm câu hỏi mở đầu. Nhớ bấm Lưu cấu hình");
+      return;
+    }
     const rec = aliasPicker && aliasPicker.rec;
     if (!rec) return;
     setAliasPicker(null);
@@ -2048,6 +2094,10 @@ function App() {
   const libRows = filteredEntries.slice((libCur - 1) * libSize, libCur * libSize);
   const canEditKb = !sheetReadOnly;
   const suggestedEntries = kbEntries.filter((e) => e.visible !== false && e.suggested === true).slice(0, 8);
+  // Câu hỏi mở đầu: ưu tiên danh sách đã thiết lập; chưa thiết lập lần nào thì dùng các câu có cờ "gợi ý" (cột H trong Google Sheet)
+  const fallbackOpening = suggestedEntries.map((e) => ({ label: "", question: e.title }));
+  const openingPills = (Array.isArray(settings.openingQuestions) ? settings.openingQuestions : fallbackOpening).filter((q) => q && String(q.question || "").trim()).slice(0, OQ_MAX);
+  const oqList = Array.isArray(settingsForm.openingQuestions) ? settingsForm.openingQuestions : fallbackOpening.slice(0, OQ_MAX);
   const detailEntry = detailId ? kbEntries.find((e) => e.id === detailId) : null;
   const unPages = Math.max(1, Math.ceil(filteredUnanswered.length / unSize));
   const unCur = Math.min(unPage, unPages);
@@ -2117,13 +2167,12 @@ function App() {
                   </div>
                   <div className="table-wrap">
                     <table className="table">
-                      <thead><tr><th>STT</th><th>Câu hỏi chuẩn</th><th>Danh mục</th><th>Cách hỏi khác</th><th>Hiển thị</th><th>Câu hỏi gợi ý</th><th>Thao tác</th></tr></thead>
+                      <thead><tr><th>STT</th><th>Câu hỏi chuẩn</th><th>Danh mục</th><th>Cách hỏi khác</th><th>Hiển thị</th><th>Thao tác</th></tr></thead>
                       <tbody id="questionRows">
-                        {loadingKb && <tr><td colSpan="7" className="empty">Đang tải...</td></tr>}
-                        {!loadingKb && libRows.length === 0 && <tr><td colSpan="7" className="empty">Không có câu hỏi phù hợp</td></tr>}
+                        {loadingKb && <tr><td colSpan="6" className="empty">Đang tải...</td></tr>}
+                        {!loadingKb && libRows.length === 0 && <tr><td colSpan="6" className="empty">Không có câu hỏi phù hợp</td></tr>}
                         {libRows.map((e, i) => {
                           const visible = e.visible !== false;
-                          const suggested = visible && e.suggested === true;
                           return (
                             <tr key={e.id}>
                               <td>{(libCur - 1) * libSize + i + 1}</td>
@@ -2136,12 +2185,6 @@ function App() {
                               <td>
                                 <label className={"switch" + (sheetReadOnly ? " disabled" : "")} title={sheetReadOnly ? "Chỉ đọc: đổi trong cột G của Google Sheet" : visible ? "Đang hiển thị" : "Đang ẩn"}>
                                   <input type="checkbox" data-visible={e.id} checked={visible} disabled={sheetReadOnly || flagBusy === e.id + "visible"} onChange={(ev) => toggleFlag(e, "visible", ev.target.checked)} />
-                                  <span className="slider" />
-                                </label>
-                              </td>
-                              <td>
-                                <label className={"switch" + (!visible || sheetReadOnly ? " disabled" : "")} title={sheetReadOnly ? "Chỉ đọc: đổi trong cột H của Google Sheet" : !visible ? "Cần bật hiển thị câu hỏi trước" : suggested ? "Đang là câu hỏi gợi ý" : "Bật để hiện khi mở chatbot"}>
-                                  <input type="checkbox" data-suggested={e.id} checked={suggested} disabled={!visible || sheetReadOnly || flagBusy === e.id + "suggested"} onChange={(ev) => toggleFlag(e, "suggested", ev.target.checked)} />
                                   <span className="slider" />
                                 </label>
                               </td>
@@ -2175,7 +2218,7 @@ function App() {
               <div className="unanswered-head">
                 <div>
                   <h2>Phản hồi không tìm thấy</h2>
-                  <p>Chatbot tự ghi lại mỗi câu hỏi mà tài liệu không có, người dùng thấy chưa đúng ý, hoặc AI cũng không trả lời được. Các cách hỏi giống nhau được gộp lại và đếm số lần.</p>
+                  <p>Chatbot tự ghi lại mỗi câu hỏi mà tài liệu không có, người dùng thấy chưa đúng ý. Các cách hỏi giống nhau được gộp lại và đếm số lần.</p>
                   {unansweredMeta && (
                     <div className="unanswered-note" style={{ background: unansweredMeta.webhookConfigured ? "#eaf5ec" : "#fff6ec" }}>
                       {unansweredMeta.webhookConfigured
@@ -2277,6 +2320,26 @@ function App() {
                 <label className="field"><span>Lời chào mở đầu</span><textarea id="welcomeMessage" rows="4" value={settingsForm.greeting || ""} onChange={(e) => setSettingsForm({ ...settingsForm, greeting: e.target.value })} /></label>
                 <label className="field"><span>Phản hồi khi không tìm thấy kết quả phù hợp</span><textarea id="noResultMessage" rows="4" value={settingsForm.noResultMessage || ""} onChange={(e) => setSettingsForm({ ...settingsForm, noResultMessage: e.target.value })} /><small>Nội dung này hiện ra khi chatbot không tìm thấy câu trả lời trong tài liệu.</small></label>
                 <label className="field expert-contact"><span>Email chuyên gia hỗ trợ (dự phòng)</span><input type="email" placeholder="vd: hotro@congty.vn" value={settingsForm.expertEmail || ""} onChange={(e) => setSettingsForm({ ...settingsForm, expertEmail: e.target.value })} /><small>Dùng khi chưa kết nối Zalo OA (xem README): câu hỏi chuyển chuyên gia sẽ được ghi lại ở tab Cài đặt hệ thống.</small></label>
+                <div className="field" id="openingSetup">
+                  <div className="alias-head">
+                    <span>Câu hỏi mở đầu</span>
+                    <span style={{ display: "inline-flex", gap: 6 }}>
+                      <button type="button" id="oqPick" className="btn secondary alias-add" onClick={() => { setApCat("ALL"); setApSearch(""); setApPage(1); setAliasPicker({ mode: "opening" }); }}>Chọn từ thư viện</button>
+                      <button type="button" id="oqAdd" className="btn secondary alias-add" disabled={oqList.length >= OQ_MAX} onClick={addOpeningQuestion}>＋ Thêm câu hỏi</button>
+                    </span>
+                  </div>
+                  <div className="alias-list" id="oqList">
+                    {oqList.length === 0 && <div className="hint" style={{ marginTop: 0 }}>Chưa có câu hỏi mở đầu nào: khung chat chỉ hiện lời chào.</div>}
+                    {oqList.map((q, i) => (
+                      <div className="oq-row" key={i}>
+                        <input className="oq-label" aria-label="Nhãn hiển thị trên nút" placeholder="Nhãn hiển thị trên nút (để trống = dùng luôn câu hỏi)" value={q.label} onChange={(e) => updateOpeningQuestion(i, { label: e.target.value })} />
+                        <input className="oq-question" aria-label="Câu hỏi gửi cho chatbot" placeholder="Câu hỏi gửi cho chatbot khi bấm nút" value={q.question} onChange={(e) => updateOpeningQuestion(i, { question: e.target.value })} />
+                        <button type="button" className="alias-remove" aria-label="Xóa câu hỏi mở đầu" onClick={() => removeOpeningQuestion(i)}>×</button>
+                      </div>
+                    ))}
+                  </div>
+                  <small>Hiện thành các nút bấm dưới lời chào khi mở chatbot (tối đa {OQ_MAX} câu). Nên chọn câu có sẵn trong thư viện để chatbot trả lời được ngay.</small>
+                </div>
                 {adminError && <div className="inline-alert">{adminError}</div>}
               </div>
               <footer><button type="button" id="saveConversation" className="btn" onClick={saveSettings}>{settingsSaved ? "Đã lưu" : "Lưu cấu hình"}</button></footer>
@@ -2285,8 +2348,12 @@ function App() {
 
           {tab === "chat" && (
             <>
-              <p className="chat-hint">Màn hình phần mềm mẫu. Bấm vào mascot ở góc phải để mở hoặc đóng khung chat (kéo thả để đổi vị trí). Khung chat dùng đúng tài liệu và cấu hình hội thoại hiện tại.</p>
-              <div className="demo-frame" ref={demoRef} id="demoFrame">
+              <div className="demo-bar">
+                <span>Bấm vào mascot ở góc phải màn hình để mở hoặc đóng chat; kéo thả để đổi vị trí. Khung chat dùng đúng tài liệu và cấu hình hội thoại hiện tại.</span>
+                <button type="button" id="demoFullscreen" className="btn secondary" onClick={() => { setFabPos(null); setDemoFull(true); }}>Toàn màn hình</button>
+              </div>
+              <div className={"demo-frame" + (demoFull ? " full" : "")} ref={demoRef} id="demoFrame">
+                {demoFull && <button type="button" id="demoExit" className="demo-exit" onClick={() => { setFabPos(null); setDemoFull(false); }}>Thu nhỏ (Esc)</button>}
                 <img className="demo-shot" src={window.__DEMO_SHOT} alt="Màn hình phần mềm HROffice (mẫu)" draggable="false" />
                 <button type="button" id="demoFab" className={"d-chat-fab" + (fabDragging ? " dragging" : "")} aria-label="Mở chatbot" aria-expanded={chatOpen} style={fabPos ? { right: fabPos.right, bottom: fabPos.bottom } : undefined} onPointerDown={fabPointerDown} onPointerMove={fabPointerMove} onPointerUp={fabPointerUp} onPointerCancel={fabPointerCancel}>
                   <picture>
@@ -2300,10 +2367,10 @@ function App() {
                 <section className="pbody" ref={scrollRef}>
                   <h2>{greetParts.title}</h2>
                   {greetParts.sub && <p>{greetParts.sub}</p>}
-                  {suggestedEntries.length > 0 && (
-                    <div className="quick">
-                      {suggestedEntries.map((e) => (
-                        <button key={e.id} type="button" data-suggested-chip={e.id} title={e.title} onClick={() => sendMessage(e.title)}><span>{e.title}</span></button>
+                  {openingPills.length > 0 && (
+                    <div className="quick" id="openingQuestions">
+                      {openingPills.map((q, i) => (
+                        <button key={i} type="button" data-opening-chip={i} title={q.question} onClick={() => sendMessage(q.question)}><span>{q.label || q.question}</span></button>
                       ))}
                     </div>
                   )}
@@ -2314,8 +2381,6 @@ function App() {
                           <div className="msg">{m.text}</div>
                         ) : (
                           <>
-                            {m.source === "kb" && <div className="msg-caption">Từ tài liệu — không dùng AI</div>}
-                            {m.source === "ai" && <div className="msg-caption ai">Claude AI</div>}
                             <div className="msg bot">
                               {renderMessageContent(m.text)}
                               {m.source === "kb" && m.videoUrl && (
@@ -2328,18 +2393,13 @@ function App() {
                             {m.source === "ambiguous" && (
                               <div className="answer-options">
                                 {m.candidates.map((c, ci) => <button key={ci} type="button" onClick={() => selectAmbiguousCandidate(i, c)}>{c.title}</button>)}
-                                <button type="button" disabled={m.asking} onClick={() => askAI(i)}>{m.asking ? "Đang hỏi AI..." : "Không đúng ý, hỏi AI (Claude)"}</button>
                                 <button type="button" className={"expert" + (m.escalated ? " selected" : "")} disabled={m.escalated || m.escalating} onClick={() => escalateQuestion(i)}>{m.escalating ? "Đang gửi..." : m.escalated ? "Đã gửi cho chuyên gia" : "Liên hệ chuyên gia"}</button>
                               </div>
                             )}
                             {(m.source === "nomatch" || m.source === "error") && (
                               <div className="answer-options">
-                                <button type="button" disabled={m.asking} onClick={() => askAI(i)}>{m.asking ? "Đang hỏi AI..." : "Hỏi AI (Claude)"}</button>
                                 <button type="button" className={"expert" + (m.escalated ? " selected" : "")} disabled={m.escalated || m.escalating} onClick={() => escalateQuestion(i)}>{m.escalating ? "Đang gửi..." : m.escalated ? "Đã gửi cho chuyên gia" : "Liên hệ chuyên gia"}</button>
                               </div>
-                            )}
-                            {m.source === "kb" && (
-                              <button type="button" className="msg-link" disabled={m.asking} onClick={() => askAI(i)}>{m.asking ? "Đang hỏi AI..." : "Chưa đúng ý bạn? Hỏi AI thêm"}</button>
                             )}
                             {m.source === "ai" && m.needsEscalation && (
                               <div className="answer-options">
@@ -2539,9 +2599,9 @@ function App() {
       {aliasPicker && (
         <div className="modal open" id="aliasPickerModal">
           <section className="dialog alias-picker-dialog">
-            <header className="dialog-head"><h2>Chọn câu hỏi để thêm cách hỏi khác</h2><button type="button" className="close" aria-label="Đóng" onClick={() => setAliasPicker(null)}>×</button></header>
+            <header className="dialog-head"><h2>{aliasPicker.mode === "opening" ? "Chọn câu hỏi làm câu hỏi mở đầu" : "Chọn câu hỏi để thêm cách hỏi khác"}</h2><button type="button" className="close" aria-label="Đóng" onClick={() => setAliasPicker(null)}>×</button></header>
             <div className="dialog-body alias-picker-body">
-              <div className="unanswered-note" style={{ margin: 0, borderRadius: 0 }}>Câu hỏi sẽ thêm: <strong>“{aliasPicker.rec.question}”</strong></div>
+              {aliasPicker.rec && <div className="unanswered-note" style={{ margin: 0, borderRadius: 0 }}>Câu hỏi sẽ thêm: <strong>“{aliasPicker.rec.question}”</strong></div>}
               <div className="alias-picker-layout">
                 <aside className="alias-picker-side">
                   <div className="tree-head"><b>Danh mục câu hỏi</b></div>
@@ -2565,7 +2625,7 @@ function App() {
                             <td><span className="question">{e.title}</span></td>
                             <td><span className="tag">{getCategoryLabel(e.category)}</span></td>
                             <td>{Array.isArray(e.aliases) ? e.aliases.length : 0}</td>
-                            <td><button type="button" className="add-alias-choice" data-choose-alias-question={e.id} onClick={() => chooseAliasTarget(e)}>Thêm</button></td>
+                            <td><button type="button" className="add-alias-choice" data-choose-alias-question={e.id} onClick={() => chooseAliasTarget(e)}>{aliasPicker.mode === "opening" ? "Chọn" : "Thêm"}</button></td>
                           </tr>
                         ))}
                       </tbody>
@@ -2577,7 +2637,7 @@ function App() {
                   </div>
                 </section>
               </div>
-              <div className="alias-picker-note">{sheetReadOnly ? "Chế độ chỉ đọc (Google Sheet): app sẽ sao chép câu hỏi để bạn dán vào cột F của dòng đã chọn." : "Sau khi chọn, hộp thoại sửa câu hỏi sẽ mở với cách hỏi mới đã được thêm sẵn — bấm Lưu để áp dụng."}</div>
+              <div className="alias-picker-note">{aliasPicker.mode === "opening" ? "Câu được chọn sẽ thành một nút câu hỏi mở đầu trong khung chat (nhớ bấm Lưu cấu hình)." : sheetReadOnly ? "Chế độ chỉ đọc (Google Sheet): app sẽ sao chép câu hỏi để bạn dán vào cột F của dòng đã chọn." : "Sau khi chọn, hộp thoại sửa câu hỏi sẽ mở với cách hỏi mới đã được thêm sẵn — bấm Lưu để áp dụng."}</div>
             </div>
             <footer className="dialog-foot"><button type="button" className="btn secondary" onClick={() => setAliasPicker(null)}>Hủy</button></footer>
           </section>
