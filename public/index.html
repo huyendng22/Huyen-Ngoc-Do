@@ -644,6 +644,40 @@ function App() {
     } catch (e) {}
   }
 
+  // ===== Hai chiều: mỗi lần thêm / sửa / xoá gửi ĐÚNG 1 lệnh tới server, server ghi vào Google Sheet rồi trả danh sách thật =====
+  async function sheetEntryCall(method, id, entry) {
+    setAdminError("");
+    const url = id ? "/api/sheet/entry/" + encodeURIComponent(id) : "/api/sheet/entry";
+    let r, d = null;
+    try {
+      r = await fetch(url, { method, headers: authHeaders(adminToken), body: entry ? JSON.stringify({ entry }) : undefined });
+      try { d = await r.json(); } catch (e) {}
+    } catch (e) {
+      setAdminError("Lỗi kết nối tới server — dữ liệu CHƯA được ghi vào Sheet.");
+      return false;
+    }
+    if (r.status === 401) { setAdminError("Sai mã quản trị — vào cuối tab Cài đặt để nhập lại."); return false; }
+    if (d && d.kb && Array.isArray(d.kb.entries)) setKbEntries(d.kb.entries); // kể cả khi lỗi: server đã đồng bộ lại, hiện đúng trạng thái thật
+    if (!r.ok || !d || !d.ok) { setAdminError((d && d.error) || "Không ghi được vào Google Sheet."); return false; }
+    loadSheetStatus();
+    return true;
+  }
+
+  async function testSheetWrite() {
+    setSheetBusy(true);
+    setSheetNote(null);
+    try {
+      const r = await fetch("/api/sheet/test-write", { method: "POST", headers: authHeaders(adminToken) });
+      if (r.status === 401) { setSheetNote({ ok: false, message: "Cần nhập đúng mã quản trị (ô cuối tab Cài đặt) để kiểm tra." }); return; }
+      const d = await r.json();
+      setSheetNote(d.ok ? { ok: true, message: `Kết nối ghi OK: tab «${d.tab}» đang có ${d.rows} dòng dữ liệu.` } : { ok: false, message: d.error || "Không kiểm tra được." });
+    } catch (e) {
+      setSheetNote({ ok: false, message: "Lỗi kết nối." });
+    } finally {
+      setSheetBusy(false);
+    }
+  }
+
   async function loadKb() {
     try {
       const r = await fetch("/api/kb");
@@ -680,7 +714,9 @@ function App() {
       setAdminError(msg);
       return false;
     }
-    setKbEntries(nextEntries);
+    let serverKb = null;
+    try { const d = await r.json(); if (d && d.kb && Array.isArray(d.kb.entries)) serverKb = d.kb.entries; } catch (e) {}
+    setKbEntries(serverKb || nextEntries);
     return true;
   }
 
@@ -689,7 +725,7 @@ function App() {
     const { aliasesText, ...rest } = form;
     const aliases = aliasesText.split("\n").map((s) => s.trim()).filter(Boolean);
     const entry = { id: String(Date.now()), ...rest, aliases };
-    const ok = await saveKbEntries([entry, ...kbEntries]);
+    const ok = sheetWrite ? await sheetEntryCall("POST", null, { ...rest, aliases }) : await saveKbEntries([entry, ...kbEntries]);
     if (ok) {
       setForm({ ...EMPTY_FORM });
       setNewImageUrlDraft("");
@@ -731,12 +767,13 @@ function App() {
     const nextEntries = kbEntries.map((e) =>
       e.id === editingId ? { ...e, ...rest, aliases, imageUrl: undefined, imageUrl2: undefined } : e
     );
-    const ok = await saveKbEntries(nextEntries);
+    const ok = sheetWrite ? await sheetEntryCall("PUT", editingId, { ...rest, aliases }) : await saveKbEntries(nextEntries);
     if (ok) cancelEdit();
   }
 
   async function removeEntry(id) {
     if (editingId === id) cancelEdit();
+    if (sheetWrite) { await sheetEntryCall("DELETE", id); return; }
     await saveKbEntries(kbEntries.filter((e) => e.id !== id));
   }
 
@@ -785,11 +822,12 @@ function App() {
     setAdminError("");
     const r = await fetch("/api/kb/import", { method: "POST", headers: authHeaders(adminToken), body: JSON.stringify({ entries: parsed }) });
     if (r.status === 401) { setAdminError("Sai mã quản trị — vào cuối tab này để nhập lại."); return; }
-    const data = await r.json();
+    const data = await r.json().catch(() => ({}));
+    if (data.kb && Array.isArray(data.kb.entries)) setKbEntries(data.kb.entries);
     if (data.ok) {
-      setKbEntries(data.kb.entries);
-      setImportResult({ added: data.added, error: false, source });
+      setImportResult({ added: data.added, skipped: data.skipped || 0, error: false, source });
     } else {
+      if (data.error) setAdminError(data.error);
       setImportResult({ added: 0, error: true, source });
     }
   }
@@ -864,6 +902,10 @@ function App() {
 
   async function uploadImageFile(file) {
     setUploadError("");
+    if (sheetWrite) {
+      setUploadError("Đang ghi dữ liệu vào Google Sheet nên không tải ảnh lên từ máy được (ổ đĩa Render là tạm thời, ảnh sẽ mất). Hãy dán link ảnh https://… vào ô bên trên, hoặc đưa file ảnh vào thư mục public/uploads trên GitHub rồi ghi /uploads/ten-anh.png.");
+      return null;
+    }
     setUploadingImage(true);
     try {
       const fd = new FormData();
@@ -1396,6 +1438,8 @@ function App() {
   }
 
   const sheetMode = !!(sheetStatus && sheetStatus.enabled);
+  const sheetWrite = sheetMode && !!sheetStatus.writeEnabled;   // hai chiều: nhập trong chatbot -> ghi vào Sheet
+  const sheetReadOnly = sheetMode && !sheetWrite;              // chỉ đọc: sửa trong Sheet
   function renderMissingImagesWarning() {
     const list = missingImages && missingImages.missing;
     if (!list || list.length === 0) return null;
@@ -1431,9 +1475,17 @@ function App() {
         {s.configError && <div style={{ fontSize: 12.5, color: "#B3261E", fontWeight: 600, lineHeight: 1.6 }}>❌ {s.configError}</div>}
         {s.enabled && (
           <>
-            <div style={{ fontSize: 12.5, color: "#4A443B", lineHeight: 1.6 }}>
-              Tài liệu đang <strong>đồng bộ từ Google Sheet</strong>: thêm / sửa / xoá câu hỏi trực tiếp trong Sheet (cột A Câu hỏi · B Danh mục · C Câu trả lời · D Link video · E Link ảnh · F Cách hỏi khác). Server tự cập nhật mỗi {s.intervalMinutes} phút; bấm "Đồng bộ ngay" để thấy thay đổi tức thì.
-            </div>
+            {s.writeEnabled ? (
+              <div style={{ fontSize: 12.5, color: "#4A443B", lineHeight: 1.6 }}>
+                🔁 <strong>Hai chiều:</strong> thêm / sửa / xoá / nhập Excel ngay trong chatbot sẽ được <strong>ghi thẳng vào Google Sheet</strong>; sửa trực tiếp trong Sheet (cột A Câu hỏi · B Danh mục · C Câu trả lời · D Link video · E Link ảnh · F Cách hỏi khác) thì chatbot tự cập nhật mỗi {s.intervalMinutes} phút, hoặc bấm "Đồng bộ ngay". Ảnh: dán link https://… (không tải ảnh từ máy lên ở chế độ này).
+              </div>
+            ) : (
+              <div style={{ fontSize: 12.5, color: "#4A443B", lineHeight: 1.6 }}>
+                Tài liệu đang <strong>đồng bộ từ Google Sheet</strong> (chỉ đọc): thêm / sửa / xoá câu hỏi trực tiếp trong Sheet (cột A Câu hỏi · B Danh mục · C Câu trả lời · D Link video · E Link ảnh · F Cách hỏi khác). Server tự cập nhật mỗi {s.intervalMinutes} phút; bấm "Đồng bộ ngay" để thấy thay đổi tức thì.
+                {!s.writeConfigError && <div style={{ marginTop: 6, color: "#6B6255" }}>Muốn nhập dữ liệu ngay trong chatbot và tự ghi vào Sheet? Bật "ghi hai chiều" — xem README, mục <em>"Nhập dữ liệu ngay trong chatbot và tự ghi ngược vào Google Sheet"</em>.</div>}
+              </div>
+            )}
+            {s.writeConfigError && <div style={{ fontSize: 12.5, color: "#B3261E", fontWeight: 600, marginTop: 8, lineHeight: 1.6 }}>❌ Ghi hai chiều chưa bật: {s.writeConfigError}</div>}
             <div style={{ fontSize: 12, color: "#6B6255", marginTop: 6 }}>
               Đồng bộ thành công gần nhất: <strong>{when(s.lastOkAt)}</strong> · {s.entries} mục
               {s.skippedCount > 0 && <> · <span style={{ color: "#8A6D00" }}>{s.skippedCount} dòng bị bỏ qua</span></>}
@@ -1442,6 +1494,7 @@ function App() {
             {s.error && <div style={{ fontSize: 12.5, color: "#B3261E", fontWeight: 600, marginTop: 8, lineHeight: 1.6 }}>⚠️ {s.error}</div>}
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
               <button type="button" onClick={syncSheetNow} disabled={sheetBusy} style={darkButton}>{sheetBusy ? "⏳ Đang đồng bộ..." : "🔄 Đồng bộ ngay"}</button>
+              {s.writeEnabled && <button type="button" onClick={testSheetWrite} disabled={sheetBusy} style={outlineButton}>🧪 Kiểm tra kết nối ghi</button>}
               {link && <a href={link} target="_blank" rel="noreferrer" style={{ ...outlineButton, display: "inline-flex", alignItems: "center", textDecoration: "none" }}>📝 Mở Google Sheet để sửa</a>}
             </div>
             {sheetNote && <div style={{ marginTop: 8, fontSize: 12.5, fontWeight: 600, color: sheetNote.ok ? "#3D7A4E" : "#B3261E" }}>{sheetNote.ok ? "✅ " : "❌ "}{sheetNote.message}</div>}
@@ -1510,7 +1563,8 @@ function App() {
       <div style={{ flex: 1, padding: "24px 20px", display: "flex", justifyContent: "center" }}>
         {tab === "kb" ? (
           <div style={{ width: "100%", maxWidth: "760px", display: "flex", flexDirection: "column", gap: "20px" }}>
-            {sheetMode ? renderSheetPanel() : (
+            {sheetMode && renderSheetPanel()}
+            {!sheetReadOnly && (
             <div style={card}>
               <div style={{ display: "flex", gap: "8px", marginBottom: "16px", alignItems: "center" }}>
                 <div style={{ display: "flex", gap: "6px", background: "#F3F1EC", padding: "4px", borderRadius: "9px", flex: 1 }}>
@@ -1524,7 +1578,7 @@ function App() {
 
               {importResult && importResult.source === "excel" && (
                 <div style={{ marginBottom: 14, fontSize: 13, fontWeight: 600, padding: "8px 12px", borderRadius: 8, color: importResult.error ? "#B3261E" : "#3D7A4E", background: importResult.error ? "#FBEAE8" : "#EAF5EC" }}>
-                  {importResult.error ? "Không đọc được dữ liệu hợp lệ từ file Excel." : `Đã nhập thành công ${importResult.added} mục từ file Excel.`}
+                  {importResult.error ? "Không đọc được dữ liệu hợp lệ từ file Excel." : `Đã nhập thành công ${importResult.added} mục từ file Excel.${importResult.skipped ? ` Bỏ qua ${importResult.skipped} dòng (trùng câu hỏi đã có trong Sheet hoặc thiếu nội dung).` : ""}`}
                 </div>
               )}
 
@@ -1579,7 +1633,7 @@ function App() {
                         if (url) insertImageIntoContent(contentRef, form.content, (v) => setForm((prev) => ({ ...prev, content: v })), url);
                       }}
                     />
-                    <button type="button" title="Chèn ảnh (chọn file, tự tải lên và chèn ngay vào vị trí con trỏ)" onClick={() => quickImageInputRef.current && quickImageInputRef.current.click()} disabled={uploadingImage} style={formatToolbarBtn}>
+                    <button type="button" title="Chèn ảnh (chọn file, tự tải lên và chèn ngay vào vị trí con trỏ)" onClick={() => quickImageInputRef.current && quickImageInputRef.current.click()} disabled={uploadingImage || sheetWrite} style={formatToolbarBtn}>
                       {uploadingImage ? "⏳" : "🖼️"}
                     </button>
                     <div style={{ fontSize: 11, color: "#8A8272", alignSelf: "center", marginLeft: 4 }}>Nút "Tiêu đề" đánh dấu dòng hiện tại thành tiêu đề 1 phần (bấm lại để bỏ). Ctrl+B/I/U = đậm/nghiêng/gạch chân. Gõ "-&gt;" tự ra "→". Đầu dòng gõ "- " hoặc "* " để tự bullet, Enter nối tiếp, Enter lần 2 (dòng trống) để thoát. <strong>Chèn ảnh dễ nhất: dán trực tiếp (Ctrl+V), kéo-thả file vào ô, hoặc bấm nút 🖼️. Nhiều ảnh liền nhau (không cách dòng trống) sẽ tự xếp thành 1 hàng.</strong></div>
@@ -1641,7 +1695,7 @@ function App() {
                       + Thêm
                     </button>
                     <input ref={imageInputRef} type="file" accept="image/*" onChange={(e) => handleImageUpload(e, (url) => setForm((prev) => ({ ...prev, images: [...prev.images, url] })))} style={{ display: "none" }} />
-                    <button type="button" onClick={() => imageInputRef.current && imageInputRef.current.click()} disabled={uploadingImage} style={{ ...darkButton, flex: "0 0 auto" }}>
+                    <button type="button" onClick={() => imageInputRef.current && imageInputRef.current.click()} disabled={uploadingImage || sheetWrite} title={sheetWrite ? "Đang ghi vào Google Sheet: hãy dán link ảnh https://…" : undefined} style={{ ...darkButton, flex: "0 0 auto", opacity: sheetWrite ? 0.5 : 1 }}>
                       {uploadingImage ? "⏳ Đang tải..." : "⬆️ Tải ảnh lên"}
                     </button>
                   </div>
@@ -1668,7 +1722,7 @@ function App() {
                   <button onClick={handleBulkImport} style={primaryButtonStyle}>📋 Nhập vào tài liệu</button>
                   {importResult && importResult.source === "paste" && (
                     <div style={{ marginTop: 10, fontSize: 13, fontWeight: 600, color: importResult.error ? "#B3261E" : "#3D7A4E" }}>
-                      {importResult.error ? "Không nhận diện được cặp Câu hỏi - Câu trả lời nào." : `Đã nhập thành công ${importResult.added} mục.`}
+                      {importResult.error ? "Không nhận diện được cặp Câu hỏi - Câu trả lời nào." : `Đã nhập thành công ${importResult.added} mục.${importResult.skipped ? ` Bỏ qua ${importResult.skipped} dòng (trùng câu hỏi đã có trong Sheet hoặc thiếu nội dung).` : ""}`}
                     </div>
                   )}
                 </>
@@ -1756,7 +1810,7 @@ function App() {
                             if (url) insertImageIntoContent(editContentRef, editForm.content, (v) => setEditForm((prev) => ({ ...prev, content: v })), url);
                           }}
                         />
-                        <button type="button" title="Chèn ảnh (chọn file, tự tải lên và chèn ngay vào vị trí con trỏ)" onClick={() => editQuickImageInputRef.current && editQuickImageInputRef.current.click()} disabled={uploadingImage} style={formatToolbarBtn}>
+                        <button type="button" title="Chèn ảnh (chọn file, tự tải lên và chèn ngay vào vị trí con trỏ)" onClick={() => editQuickImageInputRef.current && editQuickImageInputRef.current.click()} disabled={uploadingImage || sheetWrite} style={formatToolbarBtn}>
                           {uploadingImage ? "⏳" : "🖼️"}
                         </button>
                         <div style={{ fontSize: 11, color: "#8A8272", alignSelf: "center", marginLeft: 4 }}><strong>Chèn ảnh dễ nhất: dán trực tiếp (Ctrl+V), kéo-thả file vào ô, hoặc bấm nút 🖼️. Nhiều ảnh liền nhau sẽ tự xếp thành 1 hàng.</strong></div>
@@ -1818,7 +1872,7 @@ function App() {
                           + Thêm
                         </button>
                         <input ref={editImageInputRef} type="file" accept="image/*" onChange={(ev) => handleImageUpload(ev, (url) => setEditForm((prev) => ({ ...prev, images: [...prev.images, url] })))} style={{ display: "none" }} />
-                        <button type="button" onClick={() => editImageInputRef.current && editImageInputRef.current.click()} disabled={uploadingImage} style={{ ...darkButton, flex: "0 0 auto" }}>
+                        <button type="button" onClick={() => editImageInputRef.current && editImageInputRef.current.click()} disabled={uploadingImage || sheetWrite} title={sheetWrite ? "Đang ghi vào Google Sheet: hãy dán link ảnh https://…" : undefined} style={{ ...darkButton, flex: "0 0 auto", opacity: sheetWrite ? 0.5 : 1 }}>
                           {uploadingImage ? "⏳ Đang tải..." : "⬆️ Tải ảnh lên"}
                         </button>
                       </div>
@@ -1862,7 +1916,7 @@ function App() {
                           </div>
                         )}
                       </div>
-                      {!sheetMode && <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {!sheetReadOnly && <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                         <button onClick={() => startEdit(e)} title="Chỉnh sửa" style={{ background: "transparent", border: "none", cursor: "pointer", color: "#12303F", height: "fit-content", fontSize: 16 }}>✏️</button>
                         <button onClick={() => removeEntry(e.id)} title="Xoá" style={{ background: "transparent", border: "none", cursor: "pointer", color: "#B5652F", height: "fit-content", fontSize: 16 }}>🗑️</button>
                       </div>}
@@ -2020,7 +2074,7 @@ function App() {
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
                     {u.status === "new" ? (
                       <>
-                        {sheetMode ? (
+                        {sheetReadOnly ? (
                           <>
                             <button type="button" onClick={() => copyRowForSheet(u, false)} style={{ ...darkButton, height: 32 }}>📋 Sao chép để dán vào Sheet</button>
                             {u.draftAnswer && <button type="button" onClick={() => copyRowForSheet(u, true)} style={{ ...outlineButton, height: 32 }}>📋 Sao chép kèm bản nháp AI</button>}
