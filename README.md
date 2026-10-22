@@ -72,7 +72,7 @@ Lưu ý:
 Thay vì nhập từng câu trong app, chuyên gia **thêm / sửa / xoá câu hỏi ngay trong Google Sheet** (giống Excel, nhiều người cùng sửa được). Server tự đọc Sheet khi khởi động và **mỗi 5 phút**, nên Render ngủ hay khởi động lại cũng **không mất tài liệu** — dữ liệu nằm trong Sheet, không nằm trên ổ đĩa của Render.
 
 ### Thiết lập (làm 1 lần)
-1. **Tạo Sheet từ file mẫu có sẵn 82 câu hỏi:** vào Google Drive → **Mới → Tải tệp lên** → chọn `du_lieu_tong_hop.xlsx` → bấm đúp file vừa tải để mở bằng **Google Trang tính (Sheets)**. (Hoặc tạo Sheet trống rồi gõ dòng tiêu đề: `Câu hỏi | Danh mục | Câu trả lời | Link Video | Link ảnh | Cách hỏi khác`.)
+1. **Tạo Sheet từ file mẫu có sẵn 82 câu hỏi:** vào Google Drive → **Mới → Tải tệp lên** → chọn `du_lieu_tong_hop.xlsx` → bấm đúp file vừa tải để mở bằng **Google Trang tính (Sheets)**. (Hoặc tạo Sheet trống rồi gõ dòng tiêu đề: `Câu hỏi | Danh mục | Câu trả lời | Link Video | Link ảnh | Cách hỏi khác | Hiển thị | Câu hỏi gợi ý`. Hai cột cuối **không bắt buộc**: để trống = câu hỏi đang hiển thị và không phải câu hỏi gợi ý.)
 2. **Mở đúng tab dữ liệu** (tab "Dữ liệu", không phải tab "Hướng dẫn") rồi copy đường dẫn trên thanh địa chỉ trình duyệt (có đoạn `#gid=...`).
 3. **Chia sẻ:** nút **Chia sẻ → Quyền truy cập chung → "Bất kỳ ai có đường liên kết"**, vai trò **Người xem**. Thêm email các chuyên gia làm **Người chỉnh sửa**. (Server chỉ *đọc* Sheet, không bao giờ ghi vào Sheet.)
 4. **Báo cho server biết Sheet nào:** trên Render → service → **Environment → Add Environment Variable**: tên `GOOGLE_SHEET_URL`, giá trị là đường dẫn ở bước 2 → Save (Render tự khởi động lại).
@@ -83,7 +83,9 @@ Thay vì nhập từng câu trong app, chuyên gia **thêm / sửa / xoá câu h
 - Sửa trong Sheet → chatbot tự cập nhật trong tối đa 5 phút; muốn thấy ngay thì vào trang quản trị bấm **🔄 Đồng bộ ngay**.
 - Khi đã nối Sheet (chế độ chỉ-đọc mặc định), các khung thêm/sửa/xoá/nhập Excel trong app **được ẩn** (để tránh sửa ở hai nơi bị ghi đè lẫn nhau). Muốn nhập ngay trong chatbot và tự ghi vào Sheet: xem mục *Nhập dữ liệu ngay trong chatbot…* bên dưới. Nút **📝 Mở Google Sheet để sửa** ngay trên trang.
 - **Tab ❓ Chưa trả lời:** nút **📋 Sao chép để dán vào Sheet** chép sẵn 1 dòng (câu hỏi + các cách hỏi khác, tuỳ chọn kèm bản nháp AI). Mở Sheet, bấm vào ô A của dòng trống, dán (Ctrl+V), rồi điền Danh mục và Câu trả lời.
-- Dòng 1 luôn là tiêu đề. Dòng thiếu **Câu hỏi** (cột A) hoặc **Câu trả lời** (cột C) sẽ bị bỏ qua; app liệt kê số dòng bị bỏ qua trong thẻ Google Sheet. Danh mục điền `HD` / `LOI` / `CS` / `335` / `KHAC` (hoặc tên đầy đủ).
+- **Cột G "Hiển thị"** (tuỳ chọn): để trống hoặc `Có` = chatbot dùng câu hỏi này; `Không` = ẩn (chatbot không trả lời bằng câu này). **Cột H "Câu hỏi gợi ý"** (tuỳ chọn): `Có` = hiện làm câu hỏi gợi ý khi mở chatbot. Trong trang quản trị có công tắc tương ứng ở từng dòng.
+- **Cột B "Danh mục"**: điền mã `HD` / `LOI` / `CS` / `335` / `KHAC` hoặc tên đầy đủ của chúng, hoặc **bất kỳ tên danh mục nào bạn muốn** (VD `KPI & xếp loại`) — danh mục mới tự xuất hiện trong cây danh mục của trang quản trị.
+- Dòng 1 luôn là tiêu đề. Dòng thiếu **Câu hỏi** (cột A) hoặc **Câu trả lời** (cột C) sẽ bị bỏ qua; app liệt kê số dòng bị bỏ qua trong thẻ Google Sheet.
 - Cột Câu trả lời dùng định dạng như cũ: `**đậm**`, `*nghiêng*`, `__gạch chân__`, `- ` / `* ` / `1. ` đầu dòng, `## Tiêu đề phần`, `->` thành →. **Ô bắt đầu bằng dấu `=` hoặc `+`** sẽ bị Google hiểu là công thức — hãy gõ thêm dấu nháy đơn `'` đứng trước.
 - **Ảnh:** ghi vào cột E, nhiều ảnh cách nhau bằng dấu `|`. Có 2 cách:
   1. **Ảnh đặt trong repo (khuyên dùng, không bao giờ mất):** kéo file ảnh vào thư mục `public/uploads` trên GitHub rồi ghi `/uploads/ten-anh.png` vào Sheet.
@@ -148,10 +150,22 @@ function findRow_(sh, title) {
   for (let i = 0; i < col.length; i++) if (norm_(col[i][0]) === want) return i + 2;
   return -1;
 }
+function ensureHeaders_(sh) {
+  // 2 cột cuối: G "Hiển thị", H "Câu hỏi gợi ý" — tự thêm tiêu đề nếu Sheet cũ chưa có
+  const h = sh.getRange(1, 7, 1, 2);
+  const v = h.getValues()[0];
+  if (!v[0] || !v[1]) {
+    h.setNumberFormat("@");
+    h.setValues([[v[0] || "Hiển thị", v[1] || "Câu hỏi gợi ý"]]);
+  }
+}
 function writeRow_(sh, rowNo, row) {
-  const r = sh.getRange(rowNo, 1, 1, 6);
+  ensureHeaders_(sh);
+  const r = sh.getRange(rowNo, 1, 1, 8);
   r.setNumberFormat("@"); // lưu dạng chữ thuần: không bị hiểu nhầm thành công thức / ngày / số
-  r.setValues([row.slice(0, 6).map(function (v) { return String(v == null ? "" : v); })]);
+  const out = [];
+  for (let i = 0; i < 8; i++) out.push(String(row[i] == null ? "" : row[i]));
+  r.setValues([out]);
 }
 function out_(o) {
   return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);

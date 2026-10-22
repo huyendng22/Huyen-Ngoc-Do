@@ -217,7 +217,8 @@ let kb = readJson(KB_FILE, {
     },
   ],
 });
-let settings = readJson(SETTINGS_FILE, { greeting: DEFAULT_GREETING, expertEmail: "" });
+const DEFAULT_NO_RESULT = "Không tìm thấy nội dung bạn đang tìm kiếm trong tài liệu. Bạn thử diễn đạt khác đi hoặc liên hệ chuyên gia để được tư vấn rõ nhất.";
+let settings = { greeting: DEFAULT_GREETING, expertEmail: "", noResultMessage: DEFAULT_NO_RESULT, customCategories: [], ...readJson(SETTINGS_FILE, {}) };
 let escalations = readJson(ESCALATIONS_FILE, []);
 let zaloTokens = readJson(TOKEN_FILE, null);
 let zaloConfig = readJson(ZALO_CONFIG_FILE, { expertUserId: null, recentSenders: [] });
@@ -611,6 +612,18 @@ function parseCsv(text) {
   return rows;
 }
 
+// Danh mục: mã/tên có sẵn -> mã (HD, LOI...); tên khác = danh mục TỰ TẠO (lấy chính tên làm mã). Trống -> KHAC.
+function resolveCategoryValue(raw) {
+  const t = String(raw == null ? "" : raw).replace(/[\r\n|]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 100);
+  if (!t) return "KHAC";
+  const low = t.toLowerCase();
+  const found = CATEGORIES.find((c) => c.id.toLowerCase() === low || c.label.toLowerCase() === low);
+  return found ? found.id : t;
+}
+// Cột G "Hiển thị": để trống = hiển thị; "Không/No/False/0/Ẩn" = ẩn. Cột H "Câu hỏi gợi ý": "Có/Yes/True/1/x" = gợi ý.
+const norm1 = (v) => String(v == null ? "" : v).trim().toLowerCase();
+const parseVisibleFlag = (v) => !["khong", "không", "no", "false", "0", "an", "ẩn", "off", "n"].includes(norm1(v));
+const parseSuggestedFlag = (v) => ["co", "có", "yes", "true", "1", "x", "y", "on", "✓", "✔"].includes(norm1(v));
 function sheetRowsToEntries(rows) {
   const entries = [];
   const skipped = [];
@@ -630,13 +643,7 @@ function sheetRowsToEntries(rows) {
     if (!question && !answer) continue; // dòng trống
     if (!question) { skipped.push({ row: rowNo, reason: "thiếu Câu hỏi (cột A)" }); continue; }
     if (!answer) { skipped.push({ row: rowNo, reason: "chưa có Câu trả lời (cột C)", question: question.slice(0, 60) }); continue; }
-    const rawCat = String(row[1] == null ? "" : row[1]).trim().toLowerCase();
-    let category = "KHAC";
-    if (rawCat) {
-      const found = CATEGORIES.find((c) => c.id.toLowerCase() === rawCat || c.label.toLowerCase() === rawCat);
-      if (found) category = found.id;
-      else warnings.push(`Dòng ${rowNo}: danh mục "${String(row[1]).trim()}" không có trong danh sách, đã xếp vào KHAC.`);
-    }
+    const category = resolveCategoryValue(row[1]);
     const key = question.toLowerCase().replace(/\s+/g, " ");
     if (seenTitle.has(key)) warnings.push(`Dòng ${rowNo}: câu hỏi trùng với dòng ${seenTitle.get(key)} ("${question.slice(0, 40)}"). Cả hai đều được giữ — nên xoá bớt 1 dòng.`);
     else seenTitle.set(key, rowNo);
@@ -652,6 +659,8 @@ function sheetRowsToEntries(rows) {
       videoUrl: nl(row[3]).trim(),
       images: split(row[4]).map((u) => u.replace(/^uploads\//i, "/uploads/")),
       aliases: split(row[5]),
+      visible: parseVisibleFlag(row[6]),
+      suggested: parseSuggestedFlag(row[7]),
     });
   }
   return { entries, skipped: skipped.slice(0, 100), warnings: warnings.slice(0, 100) };
@@ -866,11 +875,13 @@ function prepareSheetEntry(raw) {
   if (!title || !content) throw badRequest("Cần có cả Câu hỏi và Câu trả lời.");
   if (title.length > 500) throw badRequest("Câu hỏi quá dài (tối đa 500 ký tự).");
   if (content.length > 45000) throw badRequest("Câu trả lời quá dài (Google Sheet giới hạn 50.000 ký tự mỗi ô, hãy rút gọn hoặc tách thành 2 mục).");
-  const category = CATEGORIES.some((c) => c.id === raw.category) ? raw.category : "KHAC";
+  const category = resolveCategoryValue(raw.category);
   const videoUrl = String(raw.videoUrl || "").replace(/\s+/g, " ").trim();
   const images = getEntryImages(raw).map((u) => String(u).trim().replace(/\|/g, "%7C").replace(/\s+/g, "%20")).filter(Boolean);
   const aliases = (Array.isArray(raw.aliases) ? raw.aliases : []).map((a) => String(a || "").replace(/[|\r\n]+/g, " ").replace(/\s+/g, " ").trim()).filter(Boolean);
-  return { title, row: [title, category, content, videoUrl, images.join(" | "), aliases.join(" | ")] };
+  const visible = raw.visible !== false;
+  const suggested = visible && raw.suggested === true; // câu hỏi bị ẩn thì không thể là câu hỏi gợi ý
+  return { title, row: [title, category, content, videoUrl, images.join(" | "), aliases.join(" | "), visible ? "Có" : "Không", suggested ? "Có" : ""] };
 }
 
 function requireSheetWrite(req, res, next) {
@@ -1041,6 +1052,8 @@ app.post("/api/kb/import", requireAdmin, async (req, res) => {
     videoUrl: String(e.videoUrl || "").trim(),
     images: Array.isArray(e.images) ? e.images.map((u) => String(u || "").trim()).filter(Boolean) : [],
     aliases: Array.isArray(e.aliases) ? e.aliases.map((a) => String(a || "").trim()).filter(Boolean) : [],
+    visible: e.visible !== false,
+    suggested: e.suggested === true,
   }));
   kb = { entries: [...withIds, ...kb.entries] };
   writeJson(KB_FILE, kb);
@@ -1108,10 +1121,16 @@ app.get("/api/settings", (req, res) => {
 });
 
 app.put("/api/settings", requireAdmin, (req, res) => {
-  const { greeting, expertEmail } = req.body;
+  const { greeting, expertEmail, noResultMessage, customCategories } = req.body;
   settings = {
+    ...settings,
     greeting: greeting !== undefined ? greeting : settings.greeting,
     expertEmail: expertEmail !== undefined ? expertEmail : settings.expertEmail,
+    noResultMessage: noResultMessage !== undefined ? String(noResultMessage).slice(0, 2000) : settings.noResultMessage,
+    // Danh mục tự tạo (chỉ cần giữ danh mục CHƯA có câu hỏi nào; danh mục đã có câu hỏi tự suy ra từ dữ liệu)
+    customCategories: Array.isArray(customCategories)
+      ? [...new Set(customCategories.map((c) => String(c || "").replace(/[\r\n|]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 100)).filter(Boolean))].slice(0, 100)
+      : settings.customCategories,
   };
   writeJson(SETTINGS_FILE, settings);
   res.json({ ok: true, settings });
@@ -1142,6 +1161,7 @@ app.post("/api/chat", async (req, res) => {
   const toAbsolute = (url) => (url && url.startsWith("/") ? `${origin}${url}` : url);
 
   const kbText = kb.entries
+    .filter((e) => e.visible !== false) // câu hỏi đã tắt "Hiển thị" thì không dùng để trả lời
     .map((e, i) => {
       let block = `[Mục ${i + 1}] Câu hỏi: ${e.title}\nDanh mục: ${getCategoryLabel(e.category)}\nCâu trả lời: ${e.content}`;
       if (Array.isArray(e.aliases) && e.aliases.length > 0) block += `\nCách hỏi khác cho mục này: ${e.aliases.join(" | ")}`;
