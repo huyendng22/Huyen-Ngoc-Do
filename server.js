@@ -673,8 +673,15 @@ function friendlySheetError(e) {
   return `Lỗi đồng bộ: ${(e && e.message) || e}. Chatbot vẫn dùng dữ liệu đã nạp trước đó.`;
 }
 
+let sheetSyncPromise = null;
+// Chạy tuần tự: nếu đang có 1 lần đồng bộ thì chờ nó xong rồi mới chạy lần mới (để sau khi ghi vào Sheet luôn đọc được trạng thái thật).
 async function syncFromSheet() {
-  if (!sheetMode() || sheetState.syncing) return;
+  if (!sheetMode()) return;
+  while (sheetSyncPromise) await sheetSyncPromise.catch(() => {});
+  sheetSyncPromise = doSyncFromSheet();
+  try { await sheetSyncPromise; } finally { sheetSyncPromise = null; }
+}
+async function doSyncFromSheet() {
   sheetState.syncing = true;
   sheetState.lastTryAt = new Date().toISOString();
   try {
@@ -720,6 +727,8 @@ function sheetStatusPayload(admin) {
     syncing: sheetState.syncing,
     skippedCount: sheetState.skipped.length,
     warningsCount: sheetState.warnings.length,
+    writeEnabled: sheetWriteEnabled(),
+    writeConfigError: sheetWriteConfigError(),
   };
   // Đường dẫn Sheet và chi tiết dòng lỗi chỉ trả cho chuyên gia (có mã quản trị), không lộ cho người dùng thường.
   if (admin && sheetCfg) Object.assign(out, { editUrl: sheetCfg.editUrl || null, sheetUrl: sheetCfg.raw, csvUrl: sheetCfg.csvUrl || null, skipped: sheetState.skipped, warnings: sheetState.warnings });
@@ -734,6 +743,206 @@ app.post("/api/sheet/sync", requireAdmin, async (req, res) => {
   await syncFromSheet();
   res.json({ ...sheetStatusPayload(true), ok: !sheetState.error });
 });
+
+// ================= GHI NGƯỢC VÀO GOOGLE SHEET (nhập dữ liệu ngay trong chatbot) =================
+// Server không có quyền ghi Sheet trực tiếp. Thay vào đó chuyên gia gắn 1 Google Apps Script vào CHÍNH Sheet đó và triển khai
+// thành "ứng dụng web"; server gửi từng lệnh thêm / sửa / xoá DÒNG tới script (có mật khẩu). Hướng dẫn + mã script: xem README.
+// Cấu hình: GOOGLE_SHEET_WRITE_URL (URL .../exec), GOOGLE_SHEET_WRITE_SECRET (trùng SECRET trong script), và bắt buộc ADMIN_TOKEN.
+// Hoặc file google-sheet-ghi.txt: dòng 1 = URL, dòng 2 = mật khẩu.
+const SHEET_WRITE_FILE = path.join(__dirname, "google-sheet-ghi.txt");
+const SHEET_WRITE_TIMEOUT_MS = Number(process.env.SHEET_WRITE_TIMEOUT_MS) || 30000;
+const sheetWriteCfg = (() => {
+  let url = (process.env.GOOGLE_SHEET_WRITE_URL || "").trim();
+  let secret = process.env.GOOGLE_SHEET_WRITE_SECRET || "";
+  if (!url) {
+    try {
+      const lines = fs.readFileSync(SHEET_WRITE_FILE, "utf8").split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
+      url = lines[0] || "";
+      if (!secret) secret = lines[1] || "";
+    } catch (e) {}
+  }
+  return { url, secret };
+})();
+const sheetWriteConfigured = () => !!(sheetWriteCfg.url || sheetWriteCfg.secret);
+function sheetWriteConfigError() {
+  if (!sheetWriteConfigured()) return null; // không cấu hình = bình thường (chế độ chỉ-đọc)
+  if (!sheetMode()) return "Muốn ghi vào Sheet, cần cấu hình GOOGLE_SHEET_URL (đường dẫn Sheet để ĐỌC) trước.";
+  if (!sheetWriteCfg.url) return "Thiếu GOOGLE_SHEET_WRITE_URL (URL ứng dụng web của Apps Script, kết thúc bằng /exec).";
+  if (!/^https?:\/\//i.test(sheetWriteCfg.url)) return "GOOGLE_SHEET_WRITE_URL không hợp lệ (phải bắt đầu bằng https://).";
+  if (!sheetWriteCfg.secret) return "Thiếu GOOGLE_SHEET_WRITE_SECRET (mật khẩu trùng với SECRET trong Apps Script).";
+  if (!ADMIN_TOKEN) return "Cần đặt biến ADMIN_TOKEN trên Render để bật ghi vào Sheet (nếu không, ai cũng sửa được tài liệu).";
+  return null;
+}
+const sheetWriteEnabled = () => sheetWriteConfigured() && !sheetWriteConfigError();
+
+class SheetWriteError extends Error {
+  constructor(status, message) { super(message); this.status = status; }
+}
+let sheetWriteChain = Promise.resolve();
+// Chỉ cho 1 lệnh ghi chạy tại một thời điểm (tránh 2 chuyên gia ghi đè lẫn nhau trong cùng 1 phần nghìn giây)
+function withSheetWriteLock(fn) {
+  const run = sheetWriteChain.then(fn, fn);
+  sheetWriteChain = run.catch(() => {});
+  return run;
+}
+
+async function callSheetScript(payload) {
+  let r;
+  try {
+    r = await axios.post(sheetWriteCfg.url, JSON.stringify({ secret: sheetWriteCfg.secret, ...payload }), {
+      timeout: SHEET_WRITE_TIMEOUT_MS,
+      responseType: "text",
+      transformResponse: [(d) => d],
+      maxRedirects: 5, // Google trả lời qua chuyển hướng (302) tới máy chủ khác
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+    });
+  } catch (e) {
+    if (e.response) throw new SheetWriteError(502, `Google Apps Script trả lỗi (mã ${e.response.status}). Dữ liệu CHƯA được ghi. Kiểm tra lại URL và cách triển khai script (Ứng dụng web, quyền truy cập "Bất kỳ ai").`);
+    throw new SheetWriteError(502, "Không kết nối được tới Google Apps Script. Dữ liệu CHƯA được ghi, hãy thử lại sau.");
+  }
+  const text = String(r.data == null ? "" : r.data).trim();
+  if (/^<(!doctype|html)/i.test(text)) throw new SheetWriteError(502, "Google trả về trang HTML thay vì kết quả (thường do script chưa triển khai đúng hoặc quyền truy cập chưa là \"Bất kỳ ai\"). Dữ liệu CHƯA được ghi.");
+  let j;
+  try { j = JSON.parse(text); } catch (e) { throw new SheetWriteError(502, "Apps Script trả về dữ liệu không đọc được. Dữ liệu CHƯA được ghi — kiểm tra lại mã script theo README."); }
+  if (!j || !j.ok) {
+    if (j && j.error === "forbidden") throw new SheetWriteError(502, "Apps Script từ chối vì sai mật khẩu: GOOGLE_SHEET_WRITE_SECRET trên Render phải trùng SECRET trong script. Dữ liệu CHƯA được ghi.");
+    throw new SheetWriteError(502, `Apps Script báo lỗi: ${String((j && j.error) || "không rõ").slice(0, 200)}. Dữ liệu CHƯA được ghi.`);
+  }
+  return j;
+}
+
+const titleKey = (t) => String(t == null ? "" : t).toLowerCase().replace(/\s+/g, " ").trim();
+const findEntryByTitle = (entries, t) => entries.find((e) => titleKey(e.title) === titleKey(t));
+function rowToEntryLocal(row) { return sheetRowsToEntries([["Câu hỏi"], row]).entries[0]; }
+function applyOpsLocally(entries, ops) {
+  let list = entries.map((e) => ({ ...e }));
+  for (const op of ops) {
+    if (op.op === "add") { const e = rowToEntryLocal(op.row); if (e) list.push(e); }
+    else if (op.op === "update") { const i = list.findIndex((e) => titleKey(e.title) === titleKey(op.matchTitle)); const e = rowToEntryLocal(op.row); if (i >= 0 && e) list[i] = e; }
+    else if (op.op === "delete") list = list.filter((e) => titleKey(e.title) !== titleKey(op.matchTitle));
+  }
+  return list;
+}
+function opsReflected(ops, entries) {
+  return ops.every((op) => {
+    if (op.op === "add") return !!findEntryByTitle(entries, op.row[0]);
+    if (op.op === "update") { const e = findEntryByTitle(entries, op.row[0]); return !!e && e.content === String(op.row[2]).replace(/\r\n?/g, "\n").trim(); }
+    if (op.op === "delete") return !findEntryByTitle(entries, op.matchTitle);
+    return true;
+  });
+}
+
+// Gửi 1 loạt lệnh tới Apps Script, rồi ĐỌC LẠI Sheet để lấy trạng thái thật. Lỗi thì ném SheetWriteError (kèm kb mới nhất).
+function applySheetOps(ops) {
+  return withSheetWriteLock(async () => {
+    const resp = await callSheetScript({ action: "apply", ops });
+    const results = Array.isArray(resp.results) ? resp.results : [];
+    const OK = new Set(["added", "updated", "deleted"]);
+    const okOps = ops.filter((_, i) => results[i] && OK.has(results[i].status));
+    await syncFromSheet();
+    // Nếu Google trả bản cũ (VD dùng đường dẫn "Xuất bản lên web" có độ trễ) thì áp tạm thay đổi để người dùng thấy ngay
+    if (okOps.length && !opsReflected(okOps, kb.entries)) {
+      kb = { entries: applyOpsLocally(kb.entries, okOps) };
+      writeJson(KB_FILE, kb);
+      sheetState.signature = null;
+    }
+    for (let i = 0; i < ops.length; i++) {
+      const r = results[i];
+      if (r && OK.has(r.status)) continue;
+      const name = ops[i].row ? ops[i].row[0] : ops[i].matchTitle;
+      if (r && r.status === "duplicate") throw new SheetWriteError(409, `Câu hỏi "${String(name).slice(0, 80)}" đã có trong Sheet (trùng tiêu đề). Hãy sửa mục đã có hoặc đổi tiêu đề.`);
+      if (r && r.status === "not_found") throw new SheetWriteError(409, `Không tìm thấy dòng "${String(name).slice(0, 80)}" trong Sheet (có thể vừa bị sửa/xoá trực tiếp trong Sheet). Đã đồng bộ lại — hãy thử lại.`);
+      throw new SheetWriteError(502, "Apps Script không xử lý được một lệnh. Đã đồng bộ lại.");
+    }
+    return results;
+  });
+}
+
+function badRequest(msg) { const e = new SheetWriteError(400, msg); return e; }
+function prepareSheetEntry(raw) {
+  if (!raw || typeof raw !== "object") throw badRequest("Thiếu nội dung mục.");
+  const title = String(raw.title || "").replace(/\s+/g, " ").trim();
+  const content = String(raw.content || "").replace(/\r\n?/g, "\n").trim();
+  if (!title || !content) throw badRequest("Cần có cả Câu hỏi và Câu trả lời.");
+  if (title.length > 500) throw badRequest("Câu hỏi quá dài (tối đa 500 ký tự).");
+  if (content.length > 45000) throw badRequest("Câu trả lời quá dài (Google Sheet giới hạn 50.000 ký tự mỗi ô, hãy rút gọn hoặc tách thành 2 mục).");
+  const category = CATEGORIES.some((c) => c.id === raw.category) ? raw.category : "KHAC";
+  const videoUrl = String(raw.videoUrl || "").replace(/\s+/g, " ").trim();
+  const images = getEntryImages(raw).map((u) => String(u).trim().replace(/\|/g, "%7C").replace(/\s+/g, "%20")).filter(Boolean);
+  const aliases = (Array.isArray(raw.aliases) ? raw.aliases : []).map((a) => String(a || "").replace(/[|\r\n]+/g, " ").replace(/\s+/g, " ").trim()).filter(Boolean);
+  return { title, row: [title, category, content, videoUrl, images.join(" | "), aliases.join(" | ")] };
+}
+
+function requireSheetWrite(req, res, next) {
+  if (!sheetMode()) return res.status(400).json({ ok: false, error: "Chưa nối Google Sheet." });
+  if (!sheetWriteEnabled()) return res.status(409).json({ ok: false, sheetMode: true, error: sheetWriteConfigError() || SHEET_READONLY_MSG });
+  next();
+}
+function sendSheetWriteError(res, err) {
+  if (err instanceof SheetWriteError) return res.status(err.status).json({ ok: false, error: err.message, kb });
+  console.error("[sheet-write]", err && err.message);
+  res.status(500).json({ ok: false, error: "Lỗi không xác định khi ghi vào Sheet.", kb });
+}
+const idOfTitle = (t) => { const e = findEntryByTitle(kb.entries, t); return e ? e.id : null; };
+
+app.post("/api/sheet/entry", requireAdmin, requireSheetWrite, async (req, res) => {
+  try {
+    const e = prepareSheetEntry(req.body && req.body.entry);
+    await applySheetOps([{ op: "add", row: e.row }]);
+    res.json({ ok: true, kb, id: idOfTitle(e.title) });
+  } catch (err) { sendSheetWriteError(res, err); }
+});
+app.put("/api/sheet/entry/:id", requireAdmin, requireSheetWrite, async (req, res) => {
+  try {
+    const cur = kb.entries.find((x) => x.id === req.params.id);
+    if (!cur) throw new SheetWriteError(409, "Mục này không còn trong Sheet (có thể vừa bị xoá). Danh sách đã được làm mới.");
+    const e = prepareSheetEntry(req.body && req.body.entry);
+    await applySheetOps([{ op: "update", matchTitle: cur.title, row: e.row }]);
+    res.json({ ok: true, kb, id: idOfTitle(e.title) });
+  } catch (err) { sendSheetWriteError(res, err); }
+});
+app.delete("/api/sheet/entry/:id", requireAdmin, requireSheetWrite, async (req, res) => {
+  try {
+    const cur = kb.entries.find((x) => x.id === req.params.id);
+    if (!cur) throw new SheetWriteError(409, "Mục này không còn trong Sheet (có thể đã bị xoá). Danh sách đã được làm mới.");
+    await applySheetOps([{ op: "delete", matchTitle: cur.title }]);
+    res.json({ ok: true, kb });
+  } catch (err) { sendSheetWriteError(res, err); }
+});
+app.post("/api/sheet/test-write", requireAdmin, requireSheetWrite, async (req, res) => {
+  try {
+    const j = await withSheetWriteLock(() => callSheetScript({ action: "ping" }));
+    res.json({ ok: true, tab: j.tab, rows: j.rows });
+  } catch (err) { res.status(err.status || 500).json({ ok: false, error: err.message || "Không kiểm tra được." }); }
+});
+
+// Nhập hàng loạt (Excel / dán) khi đang dùng Sheet: thêm các mục MỚI vào cuối Sheet, bỏ qua mục trùng tiêu đề.
+async function importIntoSheet(req, res) {
+  if (!sheetWriteEnabled()) return res.status(409).json({ ok: false, sheetMode: true, error: sheetWriteConfigError() || SHEET_READONLY_MSG });
+  try {
+    const entries = req.body && req.body.entries;
+    if (!Array.isArray(entries) || entries.length === 0) throw badRequest("Không có dữ liệu để nhập.");
+    const seen = new Set(kb.entries.map((e) => titleKey(e.title)));
+    const ops = [];
+    let skipped = 0;
+    for (const raw of entries) {
+      let p;
+      try { p = prepareSheetEntry(raw); } catch (e) { skipped++; continue; }
+      const k = titleKey(p.title);
+      if (seen.has(k)) { skipped++; continue; }
+      seen.add(k);
+      ops.push({ op: "add", row: p.row });
+    }
+    let added = 0;
+    for (let i = 0; i < ops.length; i += 50) {
+      const chunk = ops.slice(i, i + 50);
+      await applySheetOps(chunk);
+      added += chunk.length;
+    }
+    if (ops.length === 0) await syncFromSheet();
+    res.json({ ok: true, added, skipped, kb });
+  } catch (err) { sendSheetWriteError(res, err); }
+}
 
 // ================= KIỂM TRA ẢNH ĐƯỢC NHẮC TỚI TRONG TÀI LIỆU CÓ FILE THẬT KHÔNG =================
 // Tài liệu (nhất là khi lấy từ Google Sheet) chỉ ghi TÊN ảnh dạng "/uploads/ten.png". Nếu file ảnh chưa nằm trên server
@@ -766,6 +975,9 @@ app.get("/api/missing-images", requireAdmin, (req, res) => {
 // ================= CƠ SỞ TRI THỨC (dùng chung) =================
 // ================= TẢI ẢNH MINH HOẠ LÊN SERVER =================
 app.post("/api/upload-image", requireAdmin, (req, res) => {
+  if (sheetWriteEnabled()) {
+    return res.status(409).json({ ok: false, sheetMode: true, error: "Đang ghi dữ liệu vào Google Sheet nên không tải ảnh lên từ máy được (ổ đĩa Render là tạm thời, ảnh sẽ mất). Hãy dán link ảnh https://… hoặc đưa file ảnh vào thư mục public/uploads trên GitHub rồi ghi /uploads/ten-anh.png." });
+  }
   upload.single("image")(req, res, (err) => {
     if (err) {
       const msg = err.code === "LIMIT_FILE_SIZE" ? "Ảnh vượt quá 5MB." : err.message || "Lỗi khi tải ảnh lên.";
@@ -806,7 +1018,7 @@ app.get("/api/seed-status", (req, res) => {
 });
 
 app.put("/api/kb", requireAdmin, (req, res) => {
-  if (sheetMode()) return res.status(409).json({ ok: false, sheetMode: true, error: SHEET_READONLY_MSG });
+  if (sheetMode()) return res.status(409).json({ ok: false, sheetMode: true, error: sheetWriteEnabled() ? "Đang ghi dữ liệu vào Google Sheet: hãy thêm / sửa / xoá từng mục trong trang quản trị (không ghi đè cả danh sách)." : SHEET_READONLY_MSG });
   const { entries } = req.body;
   if (!Array.isArray(entries)) return res.status(400).json({ ok: false, error: "Thiếu entries" });
   kb = { entries };
@@ -815,8 +1027,8 @@ app.put("/api/kb", requireAdmin, (req, res) => {
 });
 
 // Nhập hàng loạt (dán tay hoặc từ Excel) — nối thêm vào danh sách hiện có
-app.post("/api/kb/import", requireAdmin, (req, res) => {
-  if (sheetMode()) return res.status(409).json({ ok: false, sheetMode: true, error: SHEET_READONLY_MSG });
+app.post("/api/kb/import", requireAdmin, async (req, res) => {
+  if (sheetMode()) return importIntoSheet(req, res); // đang dùng Google Sheet: ghi từng mục mới vào Sheet (hoặc báo chỉ-đọc)
   const { entries } = req.body;
   if (!Array.isArray(entries) || entries.length === 0) {
     return res.status(400).json({ ok: false, error: "Không có dữ liệu để nhập." });

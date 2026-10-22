@@ -81,7 +81,7 @@ Thay vì nhập từng câu trong app, chuyên gia **thêm / sửa / xoá câu h
 
 ### Dùng hằng ngày
 - Sửa trong Sheet → chatbot tự cập nhật trong tối đa 5 phút; muốn thấy ngay thì vào trang quản trị bấm **🔄 Đồng bộ ngay**.
-- Khi đã nối Sheet, các khung thêm/sửa/xoá/nhập Excel trong app **được ẩn** (để tránh sửa ở hai nơi bị ghi đè lẫn nhau). Nút **📝 Mở Google Sheet để sửa** ngay trên trang.
+- Khi đã nối Sheet (chế độ chỉ-đọc mặc định), các khung thêm/sửa/xoá/nhập Excel trong app **được ẩn** (để tránh sửa ở hai nơi bị ghi đè lẫn nhau). Muốn nhập ngay trong chatbot và tự ghi vào Sheet: xem mục *Nhập dữ liệu ngay trong chatbot…* bên dưới. Nút **📝 Mở Google Sheet để sửa** ngay trên trang.
 - **Tab ❓ Chưa trả lời:** nút **📋 Sao chép để dán vào Sheet** chép sẵn 1 dòng (câu hỏi + các cách hỏi khác, tuỳ chọn kèm bản nháp AI). Mở Sheet, bấm vào ô A của dòng trống, dán (Ctrl+V), rồi điền Danh mục và Câu trả lời.
 - Dòng 1 luôn là tiêu đề. Dòng thiếu **Câu hỏi** (cột A) hoặc **Câu trả lời** (cột C) sẽ bị bỏ qua; app liệt kê số dòng bị bỏ qua trong thẻ Google Sheet. Danh mục điền `HD` / `LOI` / `CS` / `335` / `KHAC` (hoặc tên đầy đủ).
 - Cột Câu trả lời dùng định dạng như cũ: `**đậm**`, `*nghiêng*`, `__gạch chân__`, `- ` / `* ` / `1. ` đầu dòng, `## Tiêu đề phần`, `->` thành →. **Ô bắt đầu bằng dấu `=` hoặc `+`** sẽ bị Google hiểu là công thức — hãy gõ thêm dấu nháy đơn `'` đứng trước.
@@ -116,8 +116,116 @@ Khi lỗi, chatbot **luôn giữ nguyên dữ liệu đã nạp trước đó** 
 |---|---|---|
 | `GOOGLE_SHEET_URL` | Đường dẫn Google Sheet chứa tài liệu | (tắt — dùng cách nhập trong app như cũ) |
 | `SHEET_SYNC_MINUTES` | Chu kỳ tự đồng bộ (phút) | 5 |
+| `GOOGLE_SHEET_WRITE_URL` | URL Apps Script (ghi ngược vào Sheet), kết thúc bằng `/exec` | (tắt — chỉ đọc) |
+| `GOOGLE_SHEET_WRITE_SECRET` | Mật khẩu, trùng `SECRET` trong Apps Script | |
+| `ADMIN_TOKEN` | Mã quản trị — **bắt buộc** khi bật ghi vào Sheet | |
 
 Bỏ biến `GOOGLE_SHEET_URL` (và file `google-sheet.txt`) thì app quay về cách quản lý trong app như trước.
+
+## Nhập dữ liệu ngay trong chatbot và tự ghi ngược vào Google Sheet (tuỳ chọn)
+
+Mặc định khi nối Google Sheet, trang quản trị chỉ **đọc** (mọi chỉnh sửa làm trong Sheet). Nếu muốn chuyên gia **thêm / sửa / xoá / nhập Excel ngay trong chatbot như trước và dữ liệu tự ghi vào Sheet**, bật thêm "ghi hai chiều". Server không tự có quyền ghi vào Sheet của bạn, nên cần một đoạn **Google Apps Script** gắn vào chính Sheet đó (làm 1 lần, khoảng 5 phút):
+
+### Thiết lập
+1. Mở Google Sheet tài liệu → menu **Tiện ích mở rộng → Apps Script**.
+2. Xoá mã mẫu, dán toàn bộ đoạn dưới đây. **Đổi `SECRET`** thành một chuỗi bí mật tự đặt (dài, khó đoán); nếu tab chứa tài liệu không tên "Dữ liệu" thì sửa `TAB_NAME`:
+
+```javascript
+// ===== CÀI ĐẶT (sửa 2 dòng này) =====
+const SECRET = "doi-thanh-chuoi-bi-mat-cua-ban"; // phải TRÙNG với GOOGLE_SHEET_WRITE_SECRET trên Render
+const TAB_NAME = "Dữ liệu";                        // tên tab chứa tài liệu (không thấy tab này thì dùng tab đầu tiên)
+
+function getSheet_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  return ss.getSheetByName(TAB_NAME) || ss.getSheets()[0];
+}
+function norm_(s) { return String(s == null ? "" : s).toLowerCase().replace(/\s+/g, " ").trim(); }
+function findRow_(sh, title) {
+  const last = sh.getLastRow();
+  if (last < 2) return -1;
+  const col = sh.getRange(2, 1, last - 1, 1).getValues();
+  const want = norm_(title);
+  for (let i = 0; i < col.length; i++) if (norm_(col[i][0]) === want) return i + 2;
+  return -1;
+}
+function writeRow_(sh, rowNo, row) {
+  const r = sh.getRange(rowNo, 1, 1, 6);
+  r.setNumberFormat("@"); // lưu dạng chữ thuần: không bị hiểu nhầm thành công thức / ngày / số
+  r.setValues([row.slice(0, 6).map(function (v) { return String(v == null ? "" : v); })]);
+}
+function out_(o) {
+  return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);
+}
+
+function doPost(e) {
+  const lock = LockService.getScriptLock();
+  let locked = false;
+  try {
+    const d = JSON.parse(e.postData.contents);
+    if (!SECRET || d.secret !== SECRET) return out_({ ok: false, error: "forbidden" });
+    lock.waitLock(20000);
+    locked = true;
+    const sh = getSheet_();
+    if (d.action === "ping") return out_({ ok: true, tab: sh.getName(), rows: Math.max(0, sh.getLastRow() - 1) });
+    if (d.action !== "apply" || !Array.isArray(d.ops)) return out_({ ok: false, error: "bad_request" });
+    const results = d.ops.map(function (op) {
+      if (op.op === "add") {
+        if (findRow_(sh, op.row[0]) > 0) return { op: "add", status: "duplicate" };
+        const rowNo = sh.getLastRow() + 1;
+        writeRow_(sh, rowNo, op.row);
+        return { op: "add", status: "added", row: rowNo };
+      }
+      if (op.op === "update") {
+        const rowNo = findRow_(sh, op.matchTitle);
+        if (rowNo < 0) return { op: "update", status: "not_found" };
+        if (norm_(op.row[0]) !== norm_(op.matchTitle)) {
+          const other = findRow_(sh, op.row[0]);
+          if (other > 0 && other !== rowNo) return { op: "update", status: "duplicate" };
+        }
+        writeRow_(sh, rowNo, op.row);
+        return { op: "update", status: "updated", row: rowNo };
+      }
+      if (op.op === "delete") {
+        const rowNo = findRow_(sh, op.matchTitle);
+        if (rowNo < 0) return { op: "delete", status: "not_found" };
+        sh.deleteRow(rowNo);
+        return { op: "delete", status: "deleted" };
+      }
+      return { op: String(op.op), status: "bad_op" };
+    });
+    return out_({ ok: true, results: results, rows: Math.max(0, sh.getLastRow() - 1) });
+  } catch (err) {
+    return out_({ ok: false, error: String(err) });
+  } finally {
+    if (locked) { try { lock.releaseLock(); } catch (x) {} }
+  }
+}
+```
+
+3. Bấm **Triển khai → Tùy chọn triển khai mới →** biểu tượng bánh răng chọn **Ứng dụng web**: *Thực thi với tư cách* = **Tôi**, *Người có quyền truy cập* = **Bất kỳ ai** → **Triển khai** → cấp quyền khi Google hỏi (hộp thoại "Google chưa xác minh ứng dụng": chọn *Nâng cao → Đi tới …* — vì đây là script của chính bạn) → sao chép **URL ứng dụng web** (kết thúc bằng `/exec`).
+4. Trên Render → **Environment**, thêm 2 biến (và **bắt buộc có `ADMIN_TOKEN`** — mã quản trị — để chỉ chuyên gia mới ghi được):
+   - `GOOGLE_SHEET_WRITE_URL` = URL ở bước 3
+   - `GOOGLE_SHEET_WRITE_SECRET` = đúng chuỗi `SECRET` ở bước 2
+
+   *(Cách khác không cần Render: file `google-sheet-ghi.txt` ở thư mục gốc repo, dòng 1 = URL, dòng 2 = mật khẩu.)*
+5. Mở trang quản trị → thẻ **📊 Google Sheet** chuyển sang "Hai chiều" và có nút **🧪 Kiểm tra kết nối ghi** (phải báo "Kết nối ghi OK: tab «Dữ liệu» đang có N dòng"). Các khung thêm / sửa / xoá / nhập Excel hiện lại như trước.
+
+Sau này **sửa mã script** thì phải triển khai lại: **Triển khai → Quản lý các bản triển khai → ✏️ → Phiên bản: Phiên bản mới → Triển khai** (URL giữ nguyên).
+
+### Cách hoạt động
+- Thêm / sửa / xoá một mục trong chatbot → server gửi **đúng lệnh đó** (không bao giờ ghi đè cả danh sách) → script thêm/sửa/xoá đúng **dòng** trong Sheet (tìm dòng theo Câu hỏi) → server đọc lại Sheet để hiển thị đúng trạng thái thật. Mục mới được thêm vào **cuối** Sheet.
+- Sửa trực tiếp trong Sheet vẫn được; chatbot cập nhật sau tối đa 5 phút hoặc bấm **Đồng bộ ngay**.
+- Nếu 2 người sửa cùng lúc, hoặc dòng vừa bị sửa/xoá trong Sheet, chatbot báo rõ và tự làm mới danh sách — không mất dữ liệu của người kia.
+- Không cho thêm mục **trùng Câu hỏi** với mục đã có (báo lỗi để tránh nhân đôi dòng).
+- Nhập Excel / dán hàng loạt: chỉ thêm các mục **mới**, mục trùng tiêu đề bị bỏ qua (có báo số lượng).
+- Ghi vào Sheet lỗi (sai mật khẩu, script chưa triển khai, mất mạng…) thì **không thay đổi gì** và hiện lý do bằng tiếng Việt.
+- Dùng đường dẫn Sheet dạng **chia sẻ thông thường** (không dùng "Xuất bản lên web"): đường dẫn "Xuất bản" có thể trễ vài phút nên mục vừa nhập có thể chưa hiện ngay khi đọc lại.
+
+### Hạn chế cần biết
+- **Ảnh:** không tải ảnh từ máy lên chatbot được ở chế độ này (ổ đĩa Render là tạm thời, ảnh sẽ mất trong khi dòng trong Sheet vẫn còn tên ảnh). Dán **link ảnh https://…**, hoặc kéo file ảnh vào `public/uploads` trên GitHub rồi ghi `/uploads/ten-anh.png` vào ô ảnh.
+- Mỗi ô tối đa 45.000 ký tự (giới hạn của Google Sheet). Cách hỏi khác không được chứa dấu `|`.
+- Câu chào (tab Cài đặt) và danh sách "câu hỏi chưa trả lời" không nằm trong Sheet tài liệu.
+- Bất kỳ ai biết URL Apps Script **và** mật khẩu `SECRET` đều ghi được vào Sheet; hãy giữ kín mật khẩu và đặt `SECRET` dài, khó đoán.
 
 ## Tự động thu thập câu hỏi chatbot chưa trả lời được
 
