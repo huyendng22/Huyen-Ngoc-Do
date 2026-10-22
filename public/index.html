@@ -3,15 +3,77 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Trợ lý hỗ trợ phần mềm</title>
+<title>HROffice · Quản lý Chatbot</title>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
-  * { box-sizing: border-box; }
-  body { margin: 0; font-family: 'Segoe UI', 'IBM Plex Sans', sans-serif; background: #F3F1EC; color: #1E2A32; }
-  @keyframes spin { from { transform: rotate(0deg);} to { transform: rotate(360deg);} }
+
+    :root{--blue:#076ab7;--blue-dark:#055594;--blue-soft:#eaf4ff;--bg:#f4f7fb;--ink:#263447;--muted:#718096;--line:#dce4ed;--green:#29a26b;--red:#d8525a;--yellow:#f7b731}*{box-sizing:border-box}body{margin:0;font:14px Arial,sans-serif;background:var(--bg);color:var(--ink)}button,input,textarea,select{font:inherit}button{cursor:pointer}.top{height:70px;background:var(--blue);color:#fff;display:flex;align-items:center;padding:0 32px;gap:24px;box-shadow:0 1px 3px #17385b44}.brand{font-size:27px;font-weight:700;letter-spacing:-1.6px}.brand b{color:#ffca18}.navtop{display:flex;align-items:center;gap:22px;font-weight:600;font-size:13px}.navtop span{white-space:nowrap}.spacer{flex:1}.profile{display:flex;align-items:center;gap:9px;font-size:12px}.avatar{height:35px;width:35px;border-radius:50%;display:grid;place-items:center;background:#dff1ff;color:#075898;font-weight:700;border:2px solid #a9ddff}.shell{display:flex;min-height:calc(100vh - 70px)}.sidebar{width:248px;background:#fff;border-right:1px solid var(--line);padding:15px 9px}.nav-title{padding:10px 15px 7px;color:#9ba9b8;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em}.navitem{padding:12px 14px;border-radius:5px;color:#5b6b7e;margin:2px 0}.navitem.active{background:var(--blue);color:#fff;font-weight:700}.navitem.sub{padding-left:34px;font-size:13px}.main{flex:1;min-width:0;padding:20px 32px 42px}.crumb{font-size:13px;color:#6f7d8d;margin-bottom:18px}.crumb b{color:var(--blue)}.titlebar{display:flex;align-items:center;justify-content:space-between;gap:20px}.titlebar h1{font-size:25px;margin:0}.titlebar p{margin:5px 0 0;color:var(--muted)}.tabs{display:flex;gap:28px;margin:25px -32px 20px;padding:0 32px;border-bottom:1px solid var(--line)}.tab{padding:0 1px 13px;border:0;background:transparent;color:#667587;font-weight:700;position:relative}.tab.active{color:var(--blue)}.tab.active:after{content:'';height:3px;background:var(--blue);position:absolute;left:0;right:0;bottom:-1px;border-radius:2px}.tabview{display:none}.tabview.active{display:block}.workspace{display:grid;grid-template-columns:278px minmax(0,1fr);gap:18px}.card{background:#fff;border:1px solid var(--line);border-radius:6px}.tree-head{padding:16px;border-bottom:1px solid var(--line)}.tree-head b{display:block;margin-bottom:11px}.search{height:38px;width:100%;border:1px solid #cbd7e4;border-radius:5px;padding:0 12px;color:var(--ink);outline:none}.search:focus{border-color:#2990dc;box-shadow:0 0 0 3px #2e8edc1a}.tree{padding:8px 8px 14px}.tree-row{display:flex;align-items:center;gap:7px;padding:9px 8px;border-radius:4px;color:#45566a;cursor:pointer}.tree-row:hover,.tree-row.selected{background:#edf6ff;color:#0968af}.tree-row .count{margin-left:auto;color:#8c9aab;font-size:12px}.level2{padding-left:30px;font-size:13px}.bullet{font-size:15px;color:#6d8297}.list-card{overflow:hidden}.toolbar{padding:14px;display:flex;gap:9px;align-items:center;border-bottom:1px solid var(--line)}.toolbar .search{max-width:330px}.toolbar .space{flex:1}.btn{height:38px;border:1px solid var(--blue);background:var(--blue);color:#fff;border-radius:5px;padding:0 13px;font-weight:700;white-space:nowrap}.btn.secondary{background:#fff;color:var(--blue)}.btn.icon{width:38px;padding:0;font-size:18px}.table-wrap{overflow:auto}.table{width:100%;min-width:850px;border-collapse:collapse}.table th{height:44px;background:#f5f8fb;border-bottom:1px solid var(--line);text-align:left;padding:0 14px;color:#657487;font-size:12px;white-space:nowrap}.table td{padding:13px 14px;border-bottom:1px solid #e9eef3;vertical-align:middle}.question{font-weight:700;color:#2a4056}.subtext{display:block;color:#8997a7;font-size:12px;margin-top:4px}.tag{display:inline-block;color:#1768ab;background:#eaf4ff;padding:4px 8px;border-radius:12px;font-size:12px}.switch{position:relative;display:inline-block;width:38px;height:22px}.switch input{opacity:0;width:0;height:0}.slider{position:absolute;inset:0;background:#b7c1cb;border-radius:20px;transition:.2s}.slider:before{content:'';position:absolute;width:16px;height:16px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s;box-shadow:0 1px 2px #0003}.switch input:checked+.slider{background:var(--green)}.switch input:checked+.slider:before{transform:translateX(16px)}.linkbtn{border:0;background:none;color:#126db4;padding:2px;font-weight:700}.linkbtn.delete{color:var(--red);margin-left:9px}.footerbar{padding:13px 15px;color:#718094;display:flex;justify-content:space-between;align-items:center}.category-layout{max-width:1050px}.category-card{padding:0}.category-note{margin:0;padding:14px 18px;background:#f6faff;border-bottom:1px solid #dce9f6;color:#526a84}.cat-head,.cat-row{display:grid;grid-template-columns:1fr 130px 145px;align-items:center;gap:12px;padding:13px 18px}.cat-head{font-size:12px;font-weight:700;color:#6e7d8f;background:#f7f9fb}.cat-row{border-top:1px solid #e7edf3}.cat-row.level-2 .cat-name{padding-left:29px}.cat-name{font-weight:700}.cat-row.level-2 .cat-name{font-weight:400}.cat-kind{color:#718094;font-size:13px}.empty{padding:36px;text-align:center;color:#8b99aa}.modal{position:fixed;inset:0;background:#12263e73;display:none;align-items:center;justify-content:center;padding:18px;z-index:5}.modal.open{display:flex}.dialog{width:min(620px,100%);background:#fff;border-radius:8px;box-shadow:0 18px 48px #16253e48}.dialog-head{padding:17px 20px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}.dialog-head h2{font-size:18px;margin:0}.close{border:0;background:transparent;font-size:25px;color:#7c8a9b}.dialog-body{padding:20px}.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:15px}.field{display:flex;flex-direction:column;gap:7px;font-weight:700;font-size:13px}.field.wide{grid-column:1/-1}.field input,.field select,.field textarea{width:100%;border:1px solid #cbd7e4;border-radius:5px;padding:9px 10px;font-weight:400;resize:vertical}.dialog-foot{display:flex;justify-content:flex-end;gap:9px;padding:15px 20px;border-top:1px solid var(--line)}.toast{position:fixed;right:25px;bottom:25px;background:#243c57;color:#fff;border-radius:5px;padding:12px 15px;box-shadow:0 8px 24px #19304d3d;display:none;z-index:10}.toast.show{display:block}@media(max-width:1040px){.navtop span:nth-child(n+4){display:none}.workspace{grid-template-columns:230px minmax(0,1fr)}.main{padding:20px}.tabs{margin-left:-20px;margin-right:-20px;padding-left:20px}.sidebar{width:210px}}@media(max-width:740px){.top{padding:0 16px}.navtop,.profile div{display:none}.sidebar{display:none}.main{padding:16px}.tabs{margin-left:-16px;margin-right:-16px;padding-left:16px}.workspace{grid-template-columns:1fr}.tree{display:flex;overflow:auto}.tree-row{white-space:nowrap}.level2{padding-left:8px}.titlebar{align-items:flex-start;flex-direction:column}.toolbar{flex-wrap:wrap}.toolbar .search{max-width:none}.form-grid{grid-template-columns:1fr}.field.wide{grid-column:auto}.cat-head,.cat-row{grid-template-columns:1fr 92px}.cat-head div:last-child,.cat-row div:last-child{display:none}}.tree-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:11px}.tree-title b{margin:0}.tree-toggle{border:0;background:none;color:#506b84;font-size:17px;padding:2px 4px}.tree.collapsed{display:none}.alias-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}.alias-add{height:28px;padding:0 10px;font-size:12px}.alias-list{display:grid;gap:8px}.alias-row{display:flex;gap:8px}.alias-row input{flex:1}.alias-remove{width:38px;border:1px solid #f0c4c8;background:#fff6f6;color:var(--red);border-radius:5px;font-weight:700}.cat-head,.cat-row{grid-template-columns:1fr 140px}.cat-row .cat-name{font-weight:600}
+    .upload-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.upload-note{color:#7a899a;font-size:12px;font-weight:400}.image-files{display:flex;gap:7px;flex-wrap:wrap;margin-top:9px}.file-chip{display:inline-flex;align-items:center;gap:6px;background:#eef6ff;color:#1768ab;border:1px solid #cde4fa;border-radius:14px;padding:4px 8px;font-size:12px;font-weight:400}.file-chip button{border:0;background:transparent;color:#ca4d55;font-size:15px;line-height:1;padding:0}.action-icon{width:32px;height:32px;border:0;background:transparent;padding:0;vertical-align:middle}.action-icon img{display:block;width:32px;height:32px}.action-icon+.action-icon{margin-left:7px}.attachment-title{font-size:17px;font-weight:700;color:#273445;margin-bottom:7px}.attachment-upload{display:inline-flex;align-items:center;gap:7px;color:#0879d1;font-size:18px;font-weight:600;cursor:pointer}.attachment-upload img{width:28px;height:28px}.attachment-help{color:#7a899a;font-size:12px;font-weight:400;margin:5px 0 0}.settings-layout{display:grid;grid-template-columns:278px minmax(0,1fr);gap:18px}.settings-card{padding:20px}.settings-card h2{margin:0 0 5px;font-size:19px}.settings-card p{margin:0 0 16px;color:var(--muted)}.setting-tree{padding:8px 8px 14px}.picker-group{border:1px solid var(--line);border-radius:6px;margin-top:10px;overflow:hidden}.picker-group-head{display:flex;align-items:center;gap:9px;padding:12px 14px;background:#f7f9fb}.picker-group-head b{flex:1}.picker-toggle{border:0;background:transparent;color:#59728c;font-size:17px}.picker-question{display:flex;align-items:center;gap:10px;padding:11px 14px 11px 43px;border-top:1px solid #edf1f5}.picker-question span{flex:1}.selection-summary{margin-top:16px;padding:12px 14px;border-radius:5px;background:#eef7ff;color:#246ba5;font-weight:600}.fallback-box{margin-top:22px;padding-top:22px;border-top:1px solid var(--line)}.fallback-box textarea,.fallback-box input{width:100%;margin-top:7px;border:1px solid #cbd7e4;border-radius:5px;padding:10px}.settings-actions{display:flex;justify-content:flex-end;margin-top:18px}@media(max-width:740px){.settings-layout{grid-template-columns:1fr}}.add-category-icon{border:0;background:transparent;width:32px;height:32px;padding:0;display:grid;place-items:center}.add-category-icon img{width:32px;height:32px}.rich-wrap{border:1px solid #cbd7e4;border-radius:5px;overflow:hidden;background:#fff}.rich-toolbar{display:flex;align-items:center;gap:2px;flex-wrap:wrap;padding:6px;border-bottom:1px solid #dce4ed;background:#f7f9fb}.rich-toolbar button{width:29px;height:27px;border:0;border-radius:3px;background:transparent;color:#344b62;font-weight:700}.rich-toolbar button:hover{background:#e5f1fc;color:#076ab7}.rich-toolbar select{height:27px;border:1px solid #d0d9e4;border-radius:3px;background:#fff;font-size:12px;padding:0 4px}.rich-divider{width:1px;height:20px;background:#d5dde7;margin:0 3px}.rich-editor{min-height:122px;padding:10px;outline:none;font-weight:400;line-height:1.55}.rich-editor:empty:before{content:attr(data-placeholder);color:#8c99a8}
+    /* Dialog luôn vừa khung nhìn: chỉ phần biểu mẫu cuộn, tiêu đề/nút đóng và nút lưu cố định. */
+    .dialog{max-height:calc(100vh - 36px);display:flex;flex-direction:column}
+    .dialog-head,.dialog-foot{flex:0 0 auto}
+    .dialog-body{overflow-y:auto}
+    .unanswered-card{max-width:980px;padding:22px}.unanswered-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding-bottom:18px;border-bottom:1px solid var(--line)}.unanswered-head h2{margin:0 0 6px;font-size:20px}.unanswered-head p{margin:0;color:var(--muted);max-width:650px;line-height:1.5}.status-tabs{display:flex;gap:9px;flex-wrap:wrap;padding:16px 0}.status-tab{border:0;background:#f0f3f7;color:#5d6d80;padding:9px 13px;border-radius:18px;font-weight:700}.status-tab:hover{background:#e5f1fc;color:#076ab7}.status-tab.active{background:#ddecff;color:#076ab7}.status-tab span{font-size:12px;margin-left:3px}.unanswered-list{display:grid;gap:12px}.unanswered-item{border:1px solid var(--line);border-radius:7px;padding:16px}.unanswered-item-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.unanswered-question{font-size:16px;font-weight:700;color:#253b52}.unanswered-meta{margin-top:5px;color:#7b8998;font-size:12px}.status-badge{padding:4px 8px;border-radius:12px;background:#fff0db;color:#ad6912;font-size:12px;font-weight:700;white-space:nowrap}.status-badge.ai{background:#e8f2ff;color:#1768ab}.status-badge.handled{background:#e8f7ef;color:#208b58}.status-badge.ignored{background:#f1f3f5;color:#6d7782}.unanswered-note{margin:12px 0 0;padding:10px 12px;border-radius:4px;background:#f7f9fb;color:#647487;font-size:13px;line-height:1.45}.unanswered-actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}.unanswered-actions .btn{height:34px;font-size:13px}.btn.ignore{border-color:#9aa8b6;color:#5d6d7f}.btn.ignore:hover{background:#f0f2f5}.switch.disabled{opacity:.45;pointer-events:none}@media(max-width:740px){.unanswered-card{padding:16px}.unanswered-head{flex-direction:column}.status-tabs{flex-wrap:nowrap;overflow:auto;padding-bottom:14px}.status-tab{white-space:nowrap}.unanswered-item-head{flex-direction:column}.unanswered-actions .btn{width:100%}}
+    .bulk-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 0 14px;color:#536579;font-weight:600}.bulk-actions label{display:flex;align-items:center;gap:8px}.delete-outline{display:inline-flex;align-items:center;justify-content:center;gap:7px;border-color:#f04452!important;color:#f04452!important;background:#fff!important}.delete-outline:hover{background:#fff4f5!important}.delete-outline img{width:18px;height:18px}.delete-selected:disabled{opacity:.45;cursor:not-allowed}.item-check{display:flex;align-items:flex-start;gap:12px}.item-check input{margin-top:3px;width:16px;height:16px}.unanswered-actions .delete-one{margin-left:auto}@media(max-width:740px){.bulk-actions{align-items:stretch;flex-direction:column}.unanswered-actions .delete-one{margin-left:0}}
+    .delete-icon-only{width:38px!important;padding:0!important}.delete-icon-only img{width:19px;height:19px}.unanswered-head-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.select-all-tick{display:flex;align-items:center;gap:7px;height:38px;color:#536579;font-weight:600;white-space:nowrap}.select-all-tick input{width:16px;height:16px}@media(max-width:740px){.unanswered-head-actions{width:100%}.unanswered-head-actions .btn{flex:1}.unanswered-head-actions .delete-icon-only{flex:0 0 38px}.select-all-tick{width:100%}}
+    .conversation-card{max-width:780px;padding:24px}.conversation-card header{padding-bottom:18px;border-bottom:1px solid var(--line)}.conversation-card h2{margin:0 0 6px;font-size:20px}.conversation-card header p{margin:0;color:var(--muted);line-height:1.5}.conversation-form{display:grid;gap:20px;padding:22px 0}.conversation-form textarea,.conversation-form input{width:100%;border:1px solid #cbd7e4;border-radius:5px;padding:10px;font-weight:400;line-height:1.5;resize:vertical}.conversation-form small{font-weight:400;color:#7c8b9b;line-height:1.4}.expert-contact{max-width:350px}.conversation-card footer{display:flex;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--line)}
+    .alias-picker-dialog{width:min(1080px,100%)}.alias-picker-body{padding:0;overflow:hidden}.alias-picker-layout{display:grid;grid-template-columns:270px minmax(0,1fr);min-height:440px}.alias-picker-side{border-right:1px solid var(--line)}.alias-picker-side .tree{max-height:360px;overflow:auto}.alias-picker-main{min-width:0}.alias-picker-main .toolbar{padding:14px}.alias-picker-main .toolbar .search{max-width:360px}.add-alias-choice{height:34px;border:1px solid #1677ff;background:#fff;color:#1677ff;border-radius:4px;padding:0 13px;font-weight:700}.add-alias-choice:hover{background:#1677ff;color:#fff}.alias-picker-note{padding:12px 14px;color:#728195;font-size:12px;border-top:1px solid #e8edf3}@media(max-width:740px){.alias-picker-layout{grid-template-columns:1fr}.alias-picker-side{border-right:0;border-bottom:1px solid var(--line)}.alias-picker-side .tree{max-height:155px}.alias-picker-main .toolbar .search{max-width:none}}
+    /* Typography & button foundation — đồng bộ toàn module quản lý chatbot. */
+    :root{--font-ui:"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;--text-xs:12px;--text-sm:13px;--text-base:14px;--text-lg:20px;--button-radius:4px}
+    body,button,input,textarea,select{font-family:var(--font-ui)}body{font-size:var(--text-base);line-height:1.45}.brand{font-family:Arial,sans-serif}.titlebar h1{font-size:25px;line-height:1.3}.tabs .tab{font-size:var(--text-base);font-weight:600}.navitem,.tree-row,.table td{font-size:var(--text-base)}.table th,.subtext,.unanswered-meta,.alias-picker-note{font-size:var(--text-xs)}.field,.btn,.status-tab,.select-all-tick,.add-alias-choice{font-size:var(--text-sm)}
+    .btn{height:38px;border-radius:var(--button-radius);font-weight:600;letter-spacing:0;transition:background .16s,border-color .16s,color .16s,box-shadow .16s}.btn:not(.secondary):hover{background:#055c9f;border-color:#055c9f}.btn.secondary{border-color:#1677c8;color:#076ab7}.btn.secondary:hover{background:#eaf4ff;border-color:#076ab7}.btn.icon,.action-icon,.add-category-icon{border-radius:4px}.action-icon{transition:transform .16s}.action-icon:hover{transform:translateY(-1px)}.add-alias-choice{height:38px;border-radius:var(--button-radius);font-weight:600;transition:background .16s,color .16s,border-color .16s}.status-tab{font-weight:600}.dialog-head h2,.conversation-card h2,.unanswered-head h2{font-size:var(--text-lg);line-height:1.35}.question,.unanswered-question{font-weight:600}.field input,.field select,.field textarea,.search{font-size:var(--text-base)}
+    .footerbar{min-height:52px;font-size:var(--text-sm)}.footerbar>span{display:flex;align-items:center;gap:7px}.page-size{height:32px;min-width:62px;border:1px solid #cbd7e4;border-radius:4px;background:#fff;padding:0 8px;color:#34465b}.pager{display:inline-flex!important;gap:4px}.pager button{height:30px;min-width:30px;padding:0 8px;border:1px solid #d1dbe6;background:#fff;border-radius:4px;color:#47627c;font-weight:600}.pager button:hover:not(:disabled),.pager button.active{border-color:#1677c8;background:#eaf4ff;color:#076ab7}.pager button:disabled{opacity:.45;cursor:not-allowed}.alias-picker-main .footerbar{border-top:1px solid var(--line)}@media(max-width:740px){.footerbar{align-items:flex-start;flex-direction:column;gap:10px}.pager{align-self:flex-end}}
+  
+/* ===== Bổ sung cho trang quản trị (ngoài file mẫu) ===== */
+.navitem.sub{cursor:pointer}.navitem.sub:hover{background:#eaf4ff;color:var(--blue)}.navitem.sub.active{color:var(--blue);font-weight:700;background:#eaf4ff}
+.tabs{overflow-x:auto;scrollbar-width:thin}.tab{white-space:nowrap}
+.stack{display:grid;gap:14px;margin-bottom:16px}
+.inline-alert{padding:10px 14px;border-radius:5px;background:#fdecea;color:#b3261e;font-size:13px;font-weight:600;line-height:1.5}
+.inline-ok{padding:10px 14px;border-radius:5px;background:#eaf5ec;color:#2d6a43;font-size:13px;font-weight:600;line-height:1.5}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+.question.link{cursor:pointer}.question.link:hover{color:var(--blue);text-decoration:underline}
+.tree-row.all{font-weight:700}
+.dialog.wide{width:min(780px,100%)}
+.rich-editor-ta{display:block;width:100%;min-height:150px;padding:10px;border:0;outline:none;background:#fff;font:inherit;line-height:1.55;resize:vertical;color:var(--ink)}
+.rich-toolbar button:disabled{opacity:.4;cursor:not-allowed}
+.hint{color:#7a899a;font-size:12px;font-weight:400;line-height:1.5;margin:6px 0 0}
+.preview-box{margin-top:8px;border:1px dashed #cbd7e4;border-radius:5px;padding:10px 12px;background:#fbfdff;font-size:13px;line-height:1.55;font-weight:400}
+.preview-label{font-size:11.5px;color:#7a899a;font-weight:400;margin-top:8px}
+.thumb-grid{display:flex;flex-wrap:wrap;gap:10px;margin:8px 0}
+.thumb{display:flex;flex-direction:column;align-items:center;gap:4px}
+.thumb .box{position:relative;display:inline-block}
+.thumb img{width:90px;height:90px;object-fit:cover;border-radius:6px;border:1px solid var(--line);cursor:zoom-in}
+.thumb .x{position:absolute;top:2px;right:2px;background:#055594cc;color:#fff;border:0;border-radius:5px;padding:0 5px;font-size:12px;line-height:18px}
+.thumb .ins{font-size:11px;background:#fff;border:1px solid var(--line);border-radius:4px;padding:2px 6px;color:var(--blue);white-space:nowrap}
+.attachment-upload{border:0;background:transparent;padding:0}.attachment-upload:disabled{opacity:.45;cursor:not-allowed}
+.link-row{display:flex;gap:8px;margin-top:8px}.link-row input{flex:1}
+.chip{background:#fff;color:var(--blue);border:1px solid #b9d8f2;border-radius:16px;padding:6px 12px;font-size:12.5px;text-align:left}
+.chip:hover{background:#eaf4ff}
+.chips{display:flex;flex-wrap:wrap;gap:6px}.chips span{background:#eef4fb;border-radius:12px;padding:3px 9px;font-size:12.5px;font-weight:400}
+.answer-box{border:1px solid var(--line);border-radius:5px;padding:12px;background:#fbfdff;font-weight:400;line-height:1.55}
+.reason-chip{display:inline-block;margin:0 6px 6px 0;padding:3px 8px;border-radius:12px;font-size:12px;background:#fff0db;color:#ad6912;font-weight:600}
+.reason-chip.warn{background:#fdecea;color:#b3261e}
+.draft-box{margin-top:10px}.draft-box summary{cursor:pointer;font-size:12.5px;font-weight:600;color:var(--blue)}
+.draft-box div{margin-top:6px;white-space:pre-wrap;font-size:12.5px;line-height:1.55;background:#f7f9fb;border:1px solid var(--line);border-radius:5px;padding:8px 10px;color:#4a5b6e}
+.settings-stack{display:grid;gap:18px;max-width:860px}
+.seg{display:inline-flex;gap:4px;background:#eef4fb;border-radius:6px;padding:3px;margin-bottom:14px}
+.seg button{border:0;background:transparent;padding:7px 12px;border-radius:5px;font-weight:600;color:#5b6b7e}.seg button.active{background:#fff;color:var(--blue);box-shadow:0 1px 2px #0002}
+.chat-wrap{max-width:760px}
+.note-line{font-size:13px;font-weight:600;margin-top:10px}.note-line.ok{color:#2d6a43}.note-line.err{color:#b3261e}
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+/* cột Thao tác: 2 biểu tượng nằm ngang, không xuống dòng */
+.table th:last-child,.table td:last-child{white-space:nowrap}
+.table td .action-icon{display:inline-block}
+.table{min-width:780px}
+.unanswered-note b,.unanswered-note strong{font-weight:700}
+/* hộp thoại chọn câu hỏi: cho phép cuộn để thấy cả phân trang khi danh sách dài */
+.alias-picker-body{overflow-y:auto}
+/* điện thoại: cột lưới được phép co lại (nếu không bảng rộng sẽ làm tràn cả trang) */
+@media(max-width:740px){.workspace,.settings-layout{grid-template-columns:minmax(0,1fr)}.shell{display:block}.main{min-width:0;max-width:100vw}.table-wrap{max-width:100%}}
+
 </style>
 </head>
 <body>
@@ -173,7 +235,7 @@ function renderFormattedBlock(text, keyPrefix, onImageClick) {
     const k = `${keyPrefix}-blk${i}`;
     if (b.type === "heading") {
       return (
-        <div key={k} style={{ fontSize: 15, fontWeight: 700, margin: "14px 0 6px", paddingBottom: 5, borderBottom: "1px solid #DDD7C9" }}>
+        <div key={k} style={{ fontSize: 15, fontWeight: 700, margin: "14px 0 6px", paddingBottom: 5, borderBottom: "1px solid #dce4ed" }}>
           {parseInlineFormatting(b.text, k, onImageClick)}
         </div>
       );
@@ -233,15 +295,18 @@ function renderFormattedBlock(text, keyPrefix, onImageClick) {
   });
 }
 function resolveCategoryId(raw, defaultId) {
-  const clean = String(raw || "").trim().toLowerCase();
-  if (!clean) return defaultId;
+  // Mã / tên có sẵn -> mã; tên khác = danh mục tự tạo (lấy chính tên làm mã); trống -> mặc định
+  const text = String(raw || "").replace(/[\r\n|]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 100);
+  if (!text) return defaultId;
+  const clean = text.toLowerCase();
   const byId = CATEGORIES.find((c) => c.id.toLowerCase() === clean);
   if (byId) return byId.id;
   const byLabel = CATEGORIES.find((c) => c.label.toLowerCase() === clean);
   if (byLabel) return byLabel.id;
-  return defaultId;
+  return text;
 }
 const EXAMPLE_QUESTION = "Làm sao để đặt lại mật khẩu?";
+const DEFAULT_NO_RESULT_MESSAGE = "Không tìm thấy nội dung bạn đang tìm kiếm trong tài liệu. Bạn thử diễn đạt khác đi hoặc liên hệ chuyên gia để được tư vấn rõ nhất.";
 const DEFAULT_GREETING = "Chào bạn, tôi là chatbot hỗ trợ phần mềm. Hãy đặt câu hỏi, tôi sẽ trả lời dựa trên tài liệu hướng dẫn đã được nạp.";
 
 function authHeaders(adminToken) {
@@ -352,6 +417,73 @@ const UNANSWERED_REASON_LABELS = {
   escalated: "Đã chuyển chuyên gia",
 };
 
+function IconEdit() {
+  return (
+    <svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect x="1" y="1" width="30" height="30" rx="6" fill="#eaf4ff" /><path d="M9.5 22.5l.9-3.6 8.9-8.9a1.5 1.5 0 012.1 0l.6.6a1.5 1.5 0 010 2.1l-8.9 8.9-3.6.9z" fill="none" stroke="#076ab7" strokeWidth="1.6" strokeLinejoin="round" /><path d="M17.8 11.6l2.6 2.6" stroke="#076ab7" strokeWidth="1.6" /></svg>
+  );
+}
+function IconDelete() {
+  return (
+    <svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect x="1" y="1" width="30" height="30" rx="6" fill="#fdecee" /><path d="M10.5 12h11M13.5 12v-1.5a1 1 0 011-1h3a1 1 0 011 1V12M12 12l.7 9.2a1 1 0 001 .8h4.6a1 1 0 001-.8L20 12" fill="none" stroke="#d8525a" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+  );
+}
+function IconTrash() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2M6.5 7l.8 12a1.5 1.5 0 001.5 1.4h6.4a1.5 1.5 0 001.5-1.4l.8-12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+  );
+}
+function IconAddCategory() {
+  return (
+    <svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect x="1" y="1" width="30" height="30" rx="6" fill="#eaf4ff" /><path d="M7.5 12.5v-2a1.5 1.5 0 011.5-1.5h4l2 2.5h7a1.5 1.5 0 011.5 1.5v8a1.5 1.5 0 01-1.5 1.5H9a1.5 1.5 0 01-1.5-1.5z" fill="none" stroke="#076ab7" strokeWidth="1.6" strokeLinejoin="round" /><path d="M16 15v5M13.5 17.5h5" stroke="#076ab7" strokeWidth="1.6" strokeLinecap="round" /></svg>
+  );
+}
+function IconUploadCloud() {
+  return (
+    <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><path d="M8.5 20.5a4.5 4.5 0 01-.6-8.96A6.5 6.5 0 0120.4 10.6a5 5 0 01-.4 9.9" fill="none" stroke="#0879d1" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /><path d="M14 23v-8m0 0l-3 3m3-3l3 3" fill="none" stroke="#0879d1" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+  );
+}
+
+function pageWindow(cur, pages) {
+  if (pages <= 9) return Array.from({ length: pages }, (_, i) => i + 1);
+  const set = new Set([1, 2, pages - 1, pages, cur - 1, cur, cur + 1]);
+  const arr = [...set].filter((n) => n >= 1 && n <= pages).sort((a, b) => a - b);
+  const out = [];
+  arr.forEach((n, i) => { if (i && n - arr[i - 1] > 1) out.push("…"); out.push(n); });
+  return out;
+}
+function renderPager(cur, pages, onChange) {
+  return (
+    <>
+      <button type="button" aria-label="Trang trước" disabled={cur <= 1} onClick={() => onChange(cur - 1)}>‹</button>
+      {pageWindow(cur, pages).map((n, i) => n === "…"
+        ? <span key={"e" + i} style={{ padding: "0 4px", color: "#8c9aab" }}>…</span>
+        : <button key={n} type="button" className={n === cur ? "active" : ""} onClick={() => onChange(n)}>{n}</button>)}
+      <button type="button" aria-label="Trang sau" disabled={cur >= pages} onClick={() => onChange(cur + 1)}>›</button>
+    </>
+  );
+}
+// Bản xem trước 1 dòng của câu trả lời (bỏ ký hiệu định dạng và dòng ảnh)
+function plainPreview(text, max) {
+  const t = String(text || "").split("\n")
+    .filter((l) => !/^\s*((https?:\/\/|\/?uploads\/)\S+)\s*$/i.test(l))
+    .map((l) => l.replace(/^\s*##\s+/, "").replace(/^\s*(?:[-•*]|\d+[.)])\s+/, "").replace(/\*\*|__/g, "").replace(/(^|\s)\*(\S[^*]*?)\*(?=\s|$)/g, "$1$2"))
+    .join(" ").replace(/\s+/g, " ").trim();
+  return t.length > max ? t.slice(0, max) + "…" : t;
+}
+async function copyTextToClipboard(text) {
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(text); return true; }
+  } catch (e) {}
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return ok;
+  } catch (e) { return false; }
+}
+
 function App() {
   function renderMessageContent(text) {
     return renderFormattedBlock(text, "msg", setLightboxSrc);
@@ -359,7 +491,7 @@ function App() {
 
   const [tab, setTab] = useState("kb");
   const [kbEntries, setKbEntries] = useState([]);
-  const kbIndex = useMemo(() => buildKbIndex(kbEntries), [kbEntries]);
+  const kbIndex = useMemo(() => buildKbIndex(kbEntries.filter((e) => e.visible !== false)), [kbEntries]); // câu hỏi đã tắt "Hiển thị" không được dùng để trả lời
   const [loadingKb, setLoadingKb] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterCategory, setFilterCategory] = useState("ALL");
@@ -395,8 +527,8 @@ function App() {
 
   const [lightboxSrc, setLightboxSrc] = useState(null);
 
-  const [settings, setSettings] = useState({ greeting: DEFAULT_GREETING, expertEmail: "" });
-  const [settingsForm, setSettingsForm] = useState({ greeting: DEFAULT_GREETING, expertEmail: "" });
+  const [settings, setSettings] = useState({ greeting: DEFAULT_GREETING, expertEmail: "", noResultMessage: DEFAULT_NO_RESULT_MESSAGE, customCategories: [] });
+  const [settingsForm, setSettingsForm] = useState({ greeting: DEFAULT_GREETING, expertEmail: "", noResultMessage: DEFAULT_NO_RESULT_MESSAGE, customCategories: [] });
   const [settingsSaved, setSettingsSaved] = useState(false);
 
   const [escalations, setEscalations] = useState([]);
@@ -406,7 +538,7 @@ function App() {
   const [unansweredMeta, setUnansweredMeta] = useState(null);
   const [unansweredError, setUnansweredError] = useState("");
   const [unansweredLoading, setUnansweredLoading] = useState(false);
-  const [unansweredFilter, setUnansweredFilter] = useState("open");
+  const [unansweredFilter, setUnansweredFilter] = useState("new");
   const [unansweredNote, setUnansweredNote] = useState(null); // { ok, message }
   const [fromUnanswered, setFromUnanswered] = useState(null); // { id, question, withDraft } khi đang tạo mục từ câu hỏi
   // Google Sheet làm nơi chứa tài liệu
@@ -416,6 +548,27 @@ function App() {
   const [sheetNote, setSheetNote] = useState(null); // { ok, message }
   const lastSaveErrorRef = useRef("");
   const unansweredBlockedRef = useRef(false); // true khi lần tải gần nhất bị 401 (chưa có mã quản trị) -> ngừng tự làm mới
+  // ===== Giao diện mới (theo mẫu HROffice) =====
+  const [addOpen, setAddOpen] = useState(false);
+  const [detailId, setDetailId] = useState(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importMode, setImportMode] = useState("excel");
+  const [categoryOpen, setCategoryOpen] = useState(false);
+  const [categoryName, setCategoryName] = useState("");
+  const [catTreeSearch, setCatTreeSearch] = useState("");
+  const [libPage, setLibPage] = useState(1);
+  const [libSize, setLibSize] = useState(10);
+  const [unPage, setUnPage] = useState(1);
+  const [unSize, setUnSize] = useState(10);
+  const [selectedUn, setSelectedUn] = useState(() => new Set());
+  const [aliasPicker, setAliasPicker] = useState(null); // { rec }
+  const [apCat, setApCat] = useState("ALL");
+  const [apSearch, setApSearch] = useState("");
+  const [apPage, setApPage] = useState(1);
+  const [apSize, setApSize] = useState(10);
+  const [toastMsg, setToastMsg] = useState(null);
+  const [flagBusy, setFlagBusy] = useState("");
+  const toastTimerRef = useRef(null);
 
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -597,7 +750,7 @@ function App() {
     setNewImageUrlDraft("");
     setFromUnanswered({ id: rec.id, question: rec.question, withDraft: useDraft });
     setTab("kb");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    setAddOpen(true);
   }
 
   // Xuất Excel đúng định dạng file nhập (cột A-F) để chuyên gia điền câu trả lời rồi nhập lại.
@@ -689,7 +842,7 @@ function App() {
   async function loadSettings() {
     try {
       const r = await fetch("/api/settings");
-      const data = await r.json();
+      const data = { greeting: DEFAULT_GREETING, expertEmail: "", noResultMessage: DEFAULT_NO_RESULT_MESSAGE, customCategories: [], ...(await r.json()) };
       setSettings(data);
       setSettingsForm(data);
     } catch (e) {}
@@ -724,9 +877,10 @@ function App() {
     if (!form.title.trim() || !form.content.trim()) return;
     const { aliasesText, ...rest } = form;
     const aliases = aliasesText.split("\n").map((s) => s.trim()).filter(Boolean);
-    const entry = { id: String(Date.now()), ...rest, aliases };
+    const entry = { id: String(Date.now()), ...rest, aliases, visible: true, suggested: false };
     const ok = sheetWrite ? await sheetEntryCall("POST", null, { ...rest, aliases }) : await saveKbEntries([entry, ...kbEntries]);
     if (ok) {
+      setAddOpen(false);
       setForm({ ...EMPTY_FORM });
       setNewImageUrlDraft("");
       if (fromUnanswered) {
@@ -737,14 +891,15 @@ function App() {
     }
   }
 
-  function startEdit(entry) {
+  function startEdit(entry, extraAlias) {
+    setAddOpen(false);
     setEditForm({
       title: entry.title || "",
       category: entry.category || CATEGORIES[0].id,
       content: entry.content || "",
       videoUrl: entry.videoUrl || "",
       images: getEntryImages(entry),
-      aliasesText: Array.isArray(entry.aliases) ? entry.aliases.join("\n") : "",
+      aliasesText: (() => { const base = Array.isArray(entry.aliases) ? entry.aliases.slice() : []; if (extraAlias && !base.some((a) => String(a).trim().toLowerCase() === extraAlias.trim().toLowerCase())) base.push(extraAlias); return base.join("\n"); })(),
     });
     setEditingId(entry.id);
     setNewImageUrlDraftEdit("");
@@ -752,6 +907,7 @@ function App() {
   }
 
   function cancelEdit() {
+    setFromUnanswered((f) => (f && f.asAlias ? null : f));
     setEditingId(null);
     setEditForm({ ...EMPTY_FORM });
     setNewImageUrlDraftEdit("");
@@ -767,8 +923,17 @@ function App() {
     const nextEntries = kbEntries.map((e) =>
       e.id === editingId ? { ...e, ...rest, aliases, imageUrl: undefined, imageUrl2: undefined } : e
     );
-    const ok = sheetWrite ? await sheetEntryCall("PUT", editingId, { ...rest, aliases }) : await saveKbEntries(nextEntries);
-    if (ok) cancelEdit();
+    const cur = kbEntries.find((e) => e.id === editingId) || {};
+    const flags = { visible: cur.visible !== false, suggested: cur.suggested === true };
+    const ok = sheetWrite ? await sheetEntryCall("PUT", editingId, { ...rest, aliases, ...flags }) : await saveKbEntries(nextEntries);
+    if (ok) {
+      const link = fromUnanswered;
+      cancelEdit();
+      if (link && link.asAlias) {
+        updateUnanswered(link.id, "resolved", `Đã thêm vào cách hỏi khác của "${link.target}"`);
+        toast("Đã lưu và đánh dấu xử lý");
+      }
+    }
   }
 
   async function removeEntry(id) {
@@ -1171,10 +1336,11 @@ function App() {
 
   async function saveSettings() {
     setAdminError("");
-    const r = await fetch("/api/settings", { method: "PUT", headers: authHeaders(adminToken), body: JSON.stringify(settingsForm) });
+    const r = await fetch("/api/settings", { method: "PUT", headers: authHeaders(adminToken), body: JSON.stringify({ greeting: settingsForm.greeting, expertEmail: settingsForm.expertEmail, noResultMessage: settingsForm.noResultMessage }) });
     if (r.status === 401) { setAdminError("Sai mã quản trị — vào cuối tab này để nhập lại."); return; }
     const data = await r.json();
     setSettings(data.settings);
+    toast("Đã lưu cấu hình hội thoại");
     setSettingsSaved(true);
     setTimeout(() => setSettingsSaved(false), 2000);
   }
@@ -1340,8 +1506,8 @@ function App() {
     return { type: "confident", entry: best.entry };
   }
 
-  function sendMessage() {
-    const question = input.trim();
+  function sendMessage(override) {
+    const question = (typeof override === "string" ? override : input).trim();
     if (!question || loading) return;
     setMessages((prev) => [...prev, { role: "user", text: question }]);
     setInput("");
@@ -1376,7 +1542,7 @@ function App() {
     logNoMatch(question);
     setMessages((prev) => [
       ...prev,
-      { role: "assistant", source: "nomatch", text: "🔍 Không tìm thấy nội dung phù hợp trong tài liệu đã nạp.", question },
+      { role: "assistant", source: "nomatch", text: settings.noResultMessage || "🔍 Không tìm thấy nội dung phù hợp trong tài liệu đã nạp.", question },
     ]);
   }
 
@@ -1446,12 +1612,12 @@ function App() {
     return (
       <div style={{ ...card, border: "1px solid #F0C9A0", background: "#FFF6EC" }}>
         <div style={sectionTitle}>🖼️ {list.length} ảnh chưa có file trên server</div>
-        <div style={{ fontSize: 12.5, color: "#4A443B", lineHeight: 1.6 }}>
+        <div style={{ fontSize: 12.5, color: "#3a4a5c", lineHeight: 1.6 }}>
           Tài liệu nhắc tới các ảnh bên dưới nhưng server không tìm thấy file ảnh, nên trên trang đang hiện <strong>"Ảnh lỗi"</strong>. Cách khắc phục: kéo các file ảnh vào thư mục <strong>public/uploads</strong> trên GitHub (khuyên dùng — ảnh nằm trong repo nên không bao giờ mất), hoặc đưa file sao lưu <strong>.json</strong> có kèm ảnh vào thư mục gốc repo rồi bấm <strong>Manual Deploy</strong> trên Render.
         </div>
         <details style={{ marginTop: 8 }}>
           <summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 600, color: "#8A6D00" }}>Xem tên các file ảnh đang thiếu ({list.length})</summary>
-          <ul style={{ fontSize: 12, color: "#6B6255", lineHeight: 1.6, margin: "6px 0", paddingLeft: 20 }}>
+          <ul style={{ fontSize: 12, color: "#5b6b7e", lineHeight: 1.6, margin: "6px 0", paddingLeft: 20 }}>
             {list.slice(0, 40).map((u, i) => <li key={i}>{u}</li>)}
             {list.length > 40 && <li>… và {list.length - 40} ảnh khác</li>}
           </ul>
@@ -1465,10 +1631,10 @@ function App() {
     const link = s.editUrl || s.sheetUrl;
     const when = (iso) => (iso ? new Date(iso).toLocaleString("vi-VN") : "chưa lần nào");
     return (
-      <div style={{ ...card, border: s.enabled ? "1px solid #BFD9C4" : "1px solid #DDD7C9", background: s.enabled ? "#F4FAF5" : "#FFFFFF" }}>
+      <div style={{ ...card, border: s.enabled ? "1px solid #BFD9C4" : "1px solid #dce4ed", background: s.enabled ? "#F4FAF5" : "#FFFFFF" }}>
         <div style={sectionTitle}>📊 Google Sheet — nơi chứa tài liệu</div>
         {!s.enabled && !s.configError && (
-          <div style={{ fontSize: 12.5, color: "#6B6255", lineHeight: 1.6 }}>
+          <div style={{ fontSize: 12.5, color: "#5b6b7e", lineHeight: 1.6 }}>
             Chưa kết nối. Nếu muốn chuyên gia quản lý tài liệu bằng Google Sheet (dữ liệu không bao giờ mất khi Render khởi động lại), đặt biến môi trường <strong>GOOGLE_SHEET_URL</strong> trên Render bằng đường dẫn Sheet — xem hướng dẫn trong README.
           </div>
         )}
@@ -1476,17 +1642,17 @@ function App() {
         {s.enabled && (
           <>
             {s.writeEnabled ? (
-              <div style={{ fontSize: 12.5, color: "#4A443B", lineHeight: 1.6 }}>
+              <div style={{ fontSize: 12.5, color: "#3a4a5c", lineHeight: 1.6 }}>
                 🔁 <strong>Hai chiều:</strong> thêm / sửa / xoá / nhập Excel ngay trong chatbot sẽ được <strong>ghi thẳng vào Google Sheet</strong>; sửa trực tiếp trong Sheet (cột A Câu hỏi · B Danh mục · C Câu trả lời · D Link video · E Link ảnh · F Cách hỏi khác) thì chatbot tự cập nhật mỗi {s.intervalMinutes} phút, hoặc bấm "Đồng bộ ngay". Ảnh: dán link https://… (không tải ảnh từ máy lên ở chế độ này).
               </div>
             ) : (
-              <div style={{ fontSize: 12.5, color: "#4A443B", lineHeight: 1.6 }}>
+              <div style={{ fontSize: 12.5, color: "#3a4a5c", lineHeight: 1.6 }}>
                 Tài liệu đang <strong>đồng bộ từ Google Sheet</strong> (chỉ đọc): thêm / sửa / xoá câu hỏi trực tiếp trong Sheet (cột A Câu hỏi · B Danh mục · C Câu trả lời · D Link video · E Link ảnh · F Cách hỏi khác). Server tự cập nhật mỗi {s.intervalMinutes} phút; bấm "Đồng bộ ngay" để thấy thay đổi tức thì.
-                {!s.writeConfigError && <div style={{ marginTop: 6, color: "#6B6255" }}>Muốn nhập dữ liệu ngay trong chatbot và tự ghi vào Sheet? Bật "ghi hai chiều" — xem README, mục <em>"Nhập dữ liệu ngay trong chatbot và tự ghi ngược vào Google Sheet"</em>.</div>}
+                {!s.writeConfigError && <div style={{ marginTop: 6, color: "#5b6b7e" }}>Muốn nhập dữ liệu ngay trong chatbot và tự ghi vào Sheet? Bật "ghi hai chiều" — xem README, mục <em>"Nhập dữ liệu ngay trong chatbot và tự ghi ngược vào Google Sheet"</em>.</div>}
               </div>
             )}
             {s.writeConfigError && <div style={{ fontSize: 12.5, color: "#B3261E", fontWeight: 600, marginTop: 8, lineHeight: 1.6 }}>❌ Ghi hai chiều chưa bật: {s.writeConfigError}</div>}
-            <div style={{ fontSize: 12, color: "#6B6255", marginTop: 6 }}>
+            <div style={{ fontSize: 12, color: "#5b6b7e", marginTop: 6 }}>
               Đồng bộ thành công gần nhất: <strong>{when(s.lastOkAt)}</strong> · {s.entries} mục
               {s.skippedCount > 0 && <> · <span style={{ color: "#8A6D00" }}>{s.skippedCount} dòng bị bỏ qua</span></>}
               {s.warningsCount > 0 && <> · <span style={{ color: "#8A6D00" }}>{s.warningsCount} cảnh báo</span></>}
@@ -1501,7 +1667,7 @@ function App() {
             {((s.skipped && s.skipped.length > 0) || (s.warnings && s.warnings.length > 0)) && (
               <details style={{ marginTop: 8 }}>
                 <summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 600, color: "#8A6D00" }}>Xem dòng bị bỏ qua / cảnh báo trong Sheet</summary>
-                <ul style={{ fontSize: 12, color: "#6B6255", lineHeight: 1.6, margin: "6px 0", paddingLeft: 20 }}>
+                <ul style={{ fontSize: 12, color: "#5b6b7e", lineHeight: 1.6, margin: "6px 0", paddingLeft: 20 }}>
                   {(s.skipped || []).slice(0, 30).map((x, i) => <li key={"k" + i}>Dòng {x.row}: {x.reason}{x.question ? ` — "${x.question}"` : ""} (không đưa vào chatbot)</li>)}
                   {(s.warnings || []).slice(0, 30).map((w, i) => <li key={"w" + i}>{w}</li>)}
                 </ul>
@@ -1517,19 +1683,23 @@ function App() {
   const needsAttention = (u) => reasonCount(u, "ai_unknown") + reasonCount(u, "escalated") > 0;
   const unansweredScore = (u) => (u.count || 0) + 2 * (reasonCount(u, "ai_unknown") + reasonCount(u, "escalated"));
   const unansweredCounts = {
-    open: unanswered.filter((u) => u.status === "new").length,
+    all: unanswered.length,
+    new: unanswered.filter((u) => u.status === "new").length,
+    resolved: unanswered.filter((u) => u.status === "resolved").length,
+    ignored: unanswered.filter((u) => u.status === "ignored").length,
     attention: unanswered.filter((u) => u.status === "new" && needsAttention(u)).length,
     ai_ok: unanswered.filter((u) => u.status === "new" && reasonCount(u, "ai_answered") > 0 && !needsAttention(u)).length,
-    closed: unanswered.filter((u) => u.status !== "new").length,
-    all: unanswered.length,
   };
-  const openUnansweredCount = unansweredCounts.open;
+  unansweredCounts.open = unansweredCounts.new;
+  unansweredCounts.closed = unansweredCounts.resolved + unansweredCounts.ignored;
+  const openUnansweredCount = unansweredCounts.new;
   const filteredUnanswered = unanswered
     .filter((u) => {
-      if (unansweredFilter === "open") return u.status === "new";
+      if (unansweredFilter === "new" || unansweredFilter === "open") return u.status === "new";
+      if (unansweredFilter === "resolved") return u.status === "resolved";
+      if (unansweredFilter === "ignored") return u.status === "ignored";
       if (unansweredFilter === "attention") return u.status === "new" && needsAttention(u);
       if (unansweredFilter === "ai_ok") return u.status === "new" && reasonCount(u, "ai_answered") > 0 && !needsAttention(u);
-      if (unansweredFilter === "closed") return u.status !== "new";
       return true;
     })
     .sort((a, b) => unansweredScore(b) - unansweredScore(a) || String(b.lastAt).localeCompare(String(a.lastAt)));
@@ -1545,401 +1715,519 @@ function App() {
     return matchesCategory && matchesQuery;
   });
 
-  return (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
-      <div style={{ background: "#12303F", color: "#F3F1EC", padding: "20px 28px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px" }}>
-        <div>
-          <div style={{ fontSize: "20px", fontWeight: 700 }}>Trợ lý hỗ trợ phần mềm</div>
-          <div style={{ fontSize: "13px", color: "#9FB4BE", marginTop: "2px" }}>Dùng chung cho đội ngũ chuyên gia hỗ trợ</div>
-        </div>
-        <div style={{ display: "flex", gap: "4px", background: "rgba(255,255,255,0.08)", borderRadius: "10px", padding: "4px" }}>
-          <TabButton active={tab === "kb"} onClick={() => setTab("kb")} label="📚 Quản lý tài liệu" />
-          <TabButton active={tab === "chat"} onClick={() => setTab("chat")} label="💬 Chat thử nghiệm" />
-          <TabButton active={tab === "unanswered"} onClick={() => { setTab("unanswered"); loadUnanswered(); }} label={`❓ Chưa trả lời${openUnansweredCount > 0 ? ` (${openUnansweredCount})` : ""}`} />
-          <TabButton active={tab === "settings"} onClick={() => setTab("settings")} label="⚙️ Cài đặt" />
-        </div>
-      </div>
+  // ===== Hàm cho giao diện mới =====
+  function toast(text) {
+    setToastMsg(text);
+    clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToastMsg(null), 2400);
+  }
 
-      <div style={{ flex: 1, padding: "24px 20px", display: "flex", justifyContent: "center" }}>
-        {tab === "kb" ? (
-          <div style={{ width: "100%", maxWidth: "760px", display: "flex", flexDirection: "column", gap: "20px" }}>
-            {sheetMode && renderSheetPanel()}
-            {!sheetReadOnly && (
-            <div style={card}>
-              <div style={{ display: "flex", gap: "8px", marginBottom: "16px", alignItems: "center" }}>
-                <div style={{ display: "flex", gap: "6px", background: "#F3F1EC", padding: "4px", borderRadius: "9px", flex: 1 }}>
-                  <ModeButton active={entryMode === "single"} onClick={() => setEntryMode("single")} label="✏️ Thêm từng câu" />
-                  <ModeButton active={entryMode === "bulk"} onClick={() => { cancelEdit(); setEntryMode("bulk"); }} label="📋 Nhập hàng loạt" />
-                </div>
-                <button type="button" onClick={downloadTemplate} style={outlineButton}>📄 Tải file mẫu</button>
-                <input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={handleExcelFile} style={{ display: "none" }} />
-                <button onClick={() => fileInputRef.current && fileInputRef.current.click()} style={darkButton}>⬆️ Nhập file Excel</button>
-              </div>
+  function openAdd() {
+    setForm({ ...EMPTY_FORM, category: filterCategory !== "ALL" ? filterCategory : CATEGORIES[0].id });
+    setNewImageUrlDraft("");
+    setUploadError("");
+    setAdminError("");
+    setFromUnanswered(null);
+    setAddOpen(true);
+  }
+  function closeAdd() {
+    setAddOpen(false);
+    setForm({ ...EMPTY_FORM });
+    setNewImageUrlDraft("");
+    setFromUnanswered(null);
+    setUploadError("");
+  }
 
-              {importResult && importResult.source === "excel" && (
-                <div style={{ marginBottom: 14, fontSize: 13, fontWeight: 600, padding: "8px 12px", borderRadius: 8, color: importResult.error ? "#B3261E" : "#3D7A4E", background: importResult.error ? "#FBEAE8" : "#EAF5EC" }}>
-                  {importResult.error ? "Không đọc được dữ liệu hợp lệ từ file Excel." : `Đã nhập thành công ${importResult.added} mục từ file Excel.${importResult.skipped ? ` Bỏ qua ${importResult.skipped} dòng (trùng câu hỏi đã có trong Sheet hoặc thiếu nội dung).` : ""}`}
-                </div>
-              )}
+  // Công tắc "Hiển thị" / "Câu hỏi gợi ý" ở từng dòng của bảng
+  async function toggleFlag(entry, flag, value) {
+    if (sheetReadOnly) return;
+    setAdminError("");
+    const patch = { [flag]: value };
+    if (flag === "visible" && !value) patch.suggested = false; // câu hỏi bị ẩn thì không thể là câu hỏi gợi ý
+    setFlagBusy(entry.id + flag);
+    let ok;
+    if (sheetWrite) ok = await sheetEntryCall("PUT", entry.id, { ...entry, ...patch });
+    else ok = await saveKbEntries(kbEntries.map((e) => (e.id === entry.id ? { ...e, ...patch } : e)));
+    setFlagBusy("");
+    if (ok) {
+      toast(flag === "visible" ? (value ? "Đã bật hiển thị câu hỏi" : "Đã tắt hiển thị câu hỏi") : (value ? "Đã thêm vào câu hỏi gợi ý" : "Đã bỏ khỏi câu hỏi gợi ý"));
+    }
+  }
 
-              {entryMode === "single" ? (
-                <>
-                  <div style={sectionTitle}>📄 Thêm câu hỏi &amp; câu trả lời</div>
-                  {fromUnanswered && (
-                    <div style={{ background: "#FFF9F0", border: "1px solid #F0D9BE", borderRadius: 8, padding: "8px 10px", fontSize: 12.5, color: "#6B6255", lineHeight: 1.6, margin: "6px 0 8px" }}>
-                      ❓ Đang tạo mục từ câu hỏi chưa trả lời: <strong>“{fromUnanswered.question}”</strong>.{" "}
-                      {fromUnanswered.withDraft && <strong>Câu trả lời bên dưới là bản nháp do AI soạn — hãy kiểm tra kỹ trước khi lưu. </strong>}
-                      Sau khi bấm "Thêm vào tài liệu", câu hỏi này sẽ tự được đánh dấu "Đã xử lý".{" "}
-                      <button type="button" onClick={() => setFromUnanswered(null)} style={{ background: "transparent", border: "none", color: "#B5652F", fontWeight: 700, cursor: "pointer", fontSize: 12.5, padding: 0 }}>✕ Bỏ liên kết</button>
-                    </div>
-                  )}
-                  <label style={labelStyle}>Câu hỏi</label>
-                  <input style={inputStyle} placeholder="VD: Làm sao để tạo phiếu đánh giá KPI?" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
+  async function addCustomCategory() {
+    const name = categoryName.replace(/[\r\n|]+/g, " ").replace(/\s+/g, " ").trim();
+    if (!name) { toast("Nhập tên danh mục"); return; }
+    if (allCategories.some((c) => c.label.toLowerCase() === name.toLowerCase() || c.id.toLowerCase() === name.toLowerCase())) { toast("Danh mục này đã tồn tại"); return; }
+    setAdminError("");
+    const next = [...(settings.customCategories || []), name];
+    const r = await fetch("/api/settings", { method: "PUT", headers: authHeaders(adminToken), body: JSON.stringify({ customCategories: next }) });
+    if (r.status === 401) { setAdminError("Sai mã quản trị — vào tab Cài đặt hệ thống để nhập lại."); return; }
+    const d = await r.json().catch(() => null);
+    if (d && d.settings) {
+      setSettings((p) => ({ ...p, ...d.settings }));
+      setSettingsForm((p) => ({ ...p, customCategories: d.settings.customCategories }));
+    }
+    setCategoryOpen(false);
+    setFilterCategory(name);
+    setLibPage(1);
+    toast("Đã tạo danh mục");
+  }
 
-                  <label style={labelStyle}>🔀 Cách hỏi khác (mỗi dòng 1 cách, tuỳ chọn)</label>
-                  <div style={{ fontSize: 11.5, color: "#8A8272", marginBottom: 4 }}>Giúp chatbot nhận ra câu hỏi dù người dùng gõ khác đi. VD: "Tôi quên mật khẩu", "Không đăng nhập được".</div>
-                  <textarea style={{ ...inputStyle, minHeight: 70, resize: "vertical" }} placeholder={"Tôi quên mật khẩu\nKhông đăng nhập được"} value={form.aliasesText} onChange={(e) => setForm({ ...form, aliasesText: e.target.value })} />
-                  <button
-                    type="button"
-                    onClick={() => suggestAliases(form.title, form.content, setForm)}
-                    disabled={suggestingAliases}
-                    style={{ ...outlineButton, height: "auto", padding: "6px 12px", fontSize: 12, marginBottom: 12 }}
-                  >
-                    {suggestingAliases ? "⏳ AI đang nghĩ gợi ý..." : "🤖 Nhờ AI gợi ý cách hỏi khác"}
-                  </button>
-                  <label style={labelStyle}>Danh mục</label>
-                  <select style={inputStyle} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-                    {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label} ({c.id})</option>)}
-                  </select>
-                  <label style={labelStyle}>Câu trả lời</label>
-                  <div style={{ display: "flex", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
-                    <button type="button" title="Tiêu đề phần (đánh dấu 1 mục lớn trong câu trả lời, VD 'Phần 1: ...')" onClick={() => toggleHeading(contentRef, form.content, (v) => setForm((prev) => ({ ...prev, content: v })))} style={{ ...formatToolbarBtn, width: "auto", padding: "0 8px", fontWeight: 700, fontSize: 12 }}>Tiêu đề</button>
-                    <button type="button" title="Đậm" onClick={() => wrapSelection(contentRef, form.content, (v) => setForm((prev) => ({ ...prev, content: v })), "**")} style={formatToolbarBtn}><strong>B</strong></button>
-                    <button type="button" title="Nghiêng" onClick={() => wrapSelection(contentRef, form.content, (v) => setForm((prev) => ({ ...prev, content: v })), "*")} style={formatToolbarBtn}><em>I</em></button>
-                    <button type="button" title="Gạch chân" onClick={() => wrapSelection(contentRef, form.content, (v) => setForm((prev) => ({ ...prev, content: v })), "__")} style={formatToolbarBtn}><u>U</u></button>
-                    <button type="button" title="Danh sách gạch đầu dòng" onClick={() => prefixLines(contentRef, form.content, (v) => setForm((prev) => ({ ...prev, content: v })), "dash")} style={formatToolbarBtn}>–≡</button>
-                    <button type="button" title="Danh sách chấm tròn" onClick={() => prefixLines(contentRef, form.content, (v) => setForm((prev) => ({ ...prev, content: v })), "dot")} style={formatToolbarBtn}>•≡</button>
-                    <button type="button" title="Danh sách đánh số" onClick={() => prefixLines(contentRef, form.content, (v) => setForm((prev) => ({ ...prev, content: v })), "ol")} style={formatToolbarBtn}>1.≡</button>
-                    <input
-                      ref={quickImageInputRef}
-                      type="file"
-                      accept="image/*"
-                      style={{ display: "none" }}
-                      onChange={async (e) => {
-                        const file = e.target.files && e.target.files[0];
-                        e.target.value = "";
-                        if (!file) return;
-                        const url = await uploadImageFile(file);
-                        if (url) insertImageIntoContent(contentRef, form.content, (v) => setForm((prev) => ({ ...prev, content: v })), url);
-                      }}
-                    />
-                    <button type="button" title="Chèn ảnh (chọn file, tự tải lên và chèn ngay vào vị trí con trỏ)" onClick={() => quickImageInputRef.current && quickImageInputRef.current.click()} disabled={uploadingImage || sheetWrite} style={formatToolbarBtn}>
-                      {uploadingImage ? "⏳" : "🖼️"}
-                    </button>
-                    <div style={{ fontSize: 11, color: "#8A8272", alignSelf: "center", marginLeft: 4 }}>Nút "Tiêu đề" đánh dấu dòng hiện tại thành tiêu đề 1 phần (bấm lại để bỏ). Ctrl+B/I/U = đậm/nghiêng/gạch chân. Gõ "-&gt;" tự ra "→". Đầu dòng gõ "- " hoặc "* " để tự bullet, Enter nối tiếp, Enter lần 2 (dòng trống) để thoát. <strong>Chèn ảnh dễ nhất: dán trực tiếp (Ctrl+V), kéo-thả file vào ô, hoặc bấm nút 🖼️. Nhiều ảnh liền nhau (không cách dòng trống) sẽ tự xếp thành 1 hàng.</strong></div>
-                  </div>
-                  <textarea
-                    ref={contentRef}
-                    style={{ ...inputStyle, minHeight: 100, resize: "vertical" }}
-                    placeholder="Nhập câu trả lời chi tiết... (có thể dán ảnh trực tiếp bằng Ctrl+V, hoặc kéo-thả file ảnh vào đây)"
-                    value={form.content}
-                    onChange={(e) => handleContentChange(e, (v) => setForm((prev) => ({ ...prev, content: v })))}
-                    onKeyDown={(e) => handleContentKeyDown(e, contentRef, form.content, (v) => setForm((prev) => ({ ...prev, content: v })))}
-                    onPaste={(e) => handleContentPaste(e, contentRef, form.content, (v) => setForm((prev) => ({ ...prev, content: v })))}
-                    onDrop={(e) => handleContentDrop(e, contentRef, form.content, (v) => setForm((prev) => ({ ...prev, content: v })))}
-                  />
-                  {form.content.trim() && (
-                    <div style={{ marginTop: 6, marginBottom: 12 }}>
-                      <div style={{ fontSize: 11, color: "#8A8272", marginBottom: 4 }}>👁️ Xem trước (chữ đậm/nghiêng/gạch chân/bullet hiện đúng như lúc trả lời thật):</div>
-                      <div style={{ background: "#FFFFFF", border: "1px solid #EEE9DD", borderRadius: 8, padding: 10, fontSize: 13, color: "#4A443B", lineHeight: 1.5 }}>
-                        {renderFormattedBlock(form.content, "preview-add", setLightboxSrc)}
-                      </div>
-                    </div>
-                  )}
+  // "Thêm vào cách hỏi khác": chọn câu hỏi có sẵn để gắn câu hỏi chưa trả lời vào làm 1 cách hỏi khác
+  async function chooseAliasTarget(entry) {
+    const rec = aliasPicker && aliasPicker.rec;
+    if (!rec) return;
+    setAliasPicker(null);
+    if (sheetReadOnly) {
+      const ok = await copyTextToClipboard(rec.question);
+      setUnansweredNote({
+        ok,
+        message: ok
+          ? `Đã sao chép "${rec.question}". Mở Google Sheet, tìm dòng "${entry.title}" và dán vào ô "Cách hỏi khác" (cột F), các cách hỏi cách nhau bằng dấu |.`
+          : `Không sao chép tự động được. Hãy tự thêm "${rec.question}" vào cột F (Cách hỏi khác) của dòng "${entry.title}" trong Google Sheet.`,
+      });
+      return;
+    }
+    setFromUnanswered({ id: rec.id, question: rec.question, withDraft: false, asAlias: true, target: entry.title });
+    startEdit(entry, rec.question);
+  }
 
-                  <label style={labelStyle}>🎥 Link video hướng dẫn (tuỳ chọn)</label>
-                  <input style={inputStyle} placeholder="vd: https://youtube.com/watch?v=..." value={form.videoUrl} onChange={(e) => setForm({ ...form, videoUrl: e.target.value })} />
+  async function deleteUnansweredMany(ids) {
+    if (!ids.length) return;
+    if (!window.confirm(`Xóa ${ids.length} mục đã chọn?`)) return;
+    try {
+      for (const id of ids) {
+        const r = await fetch(`/api/unanswered/${id}`, { method: "DELETE", headers: authHeaders(adminToken) });
+        if (r.status === 401) { setUnansweredError(NEED_TOKEN_MSG); return; }
+      }
+    } catch (e) {
+      setUnansweredError("Lỗi kết nối.");
+      return;
+    }
+    setSelectedUn(new Set());
+    await loadUnanswered();
+    setUnansweredNote({ ok: true, message: `Đã xóa ${ids.length} câu hỏi.` });
+  }
 
-                  <label style={labelStyle}>🖼️ Hình ảnh minh hoạ (không giới hạn số lượng, tuỳ chọn)</label>
-
-                  {form.images.length > 0 && (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
-                      {form.images.map((url, idx) => (
-                        <div key={idx} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
-                          <div style={{ position: "relative", display: "inline-block" }}>
-                            <img src={url} alt={`Ảnh ${idx + 1}`} onClick={() => setLightboxSrc(url)} style={{ width: 90, height: 90, objectFit: "cover", borderRadius: 8, border: "1px solid #DDD7C9", cursor: "zoom-in" }} onError={(e) => { e.target.style.opacity = 0.25; }} />
-                            <button type="button" onClick={() => removeImageAt(setForm, idx)} style={{ position: "absolute", top: 2, right: 2, background: "rgba(18,48,63,0.8)", color: "#fff", border: "none", borderRadius: 6, padding: "1px 6px", fontSize: 11, cursor: "pointer" }}>
-                              ✕
-                            </button>
-                          </div>
-                          <button
-                            type="button"
-                            title="Chèn ảnh này vào đúng vị trí con trỏ trong Câu trả lời"
-                            onClick={() => insertImageIntoContent(contentRef, form.content, (v) => setForm((prev) => ({ ...prev, content: v })), url)}
-                            style={{ fontSize: 10.5, background: "#FFFFFF", border: "1px solid #DDD7C9", borderRadius: 6, padding: "2px 6px", cursor: "pointer", color: "#12303F", whiteSpace: "nowrap" }}
-                          >
-                            ➕ Chèn vào câu trả lời
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <div style={{ display: "flex", gap: 8, marginBottom: 4 }}>
-                    <input
-                      style={{ ...inputStyle, marginBottom: 0, flex: 1 }}
-                      placeholder="Dán link ảnh rồi bấm '+ Thêm', hoặc bấm 'Tải ảnh lên' để chọn file từ máy"
-                      value={newImageUrlDraft}
-                      onChange={(e) => setNewImageUrlDraft(e.target.value)}
-                    />
-                    <button type="button" onClick={() => { addImageUrl(setForm, newImageUrlDraft); setNewImageUrlDraft(""); }} style={{ ...outlineButton, height: "auto", padding: "0 14px", flex: "0 0 auto" }}>
-                      + Thêm
-                    </button>
-                    <input ref={imageInputRef} type="file" accept="image/*" onChange={(e) => handleImageUpload(e, (url) => setForm((prev) => ({ ...prev, images: [...prev.images, url] })))} style={{ display: "none" }} />
-                    <button type="button" onClick={() => imageInputRef.current && imageInputRef.current.click()} disabled={uploadingImage || sheetWrite} title={sheetWrite ? "Đang ghi vào Google Sheet: hãy dán link ảnh https://…" : undefined} style={{ ...darkButton, flex: "0 0 auto", opacity: sheetWrite ? 0.5 : 1 }}>
-                      {uploadingImage ? "⏳ Đang tải..." : "⬆️ Tải ảnh lên"}
-                    </button>
-                  </div>
-                  {uploadError && <div style={{ fontSize: 12, color: "#B3261E", marginBottom: 6 }}>{uploadError}</div>}
-
-                  <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-                    <button onClick={addEntry} disabled={uploadingImage} style={{ ...primaryButtonStyle, width: "auto", flex: 1, marginTop: 0, opacity: uploadingImage ? 0.6 : 1 }}>
-                      {uploadingImage ? "⏳ Đang tải ảnh lên, vui lòng đợi..." : "➕ Thêm vào tài liệu"}
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div style={sectionTitle}>📋 Nhập hàng loạt Câu hỏi - Câu trả lời</div>
-                  <div style={{ fontSize: 12.5, color: "#6B6255", lineHeight: 1.6, marginBottom: 10 }}>
-                    Dán từ Excel: mỗi dòng 1 cặp, cách nhau bởi Tab — <strong>Câu hỏi</strong> [Tab] <strong>Mã danh mục</strong> [Tab] <strong>Câu trả lời</strong> [Tab] <strong>Link video</strong> [Tab] <strong>Link ảnh</strong> [Tab] <strong>Cách hỏi khác</strong> (3 cột cuối tuỳ chọn, có thể bỏ trống; nhiều ảnh/cách hỏi cách nhau bởi dấu |). Hoặc dán khối văn bản dạng "Câu hỏi: ... / Danh mục: ... / Câu trả lời: ... / Video: ... / Hình ảnh: ... / Cách hỏi khác: ...", mỗi mục cách nhau 1 dòng trống.
-                  </div>
-                  <label style={labelStyle}>Danh mục mặc định</label>
-                  <select style={inputStyle} value={bulkCategory} onChange={(e) => setBulkCategory(e.target.value)}>
-                    {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label} ({c.id})</option>)}
-                  </select>
-                  <label style={labelStyle}>Dán dữ liệu vào đây</label>
-                  <textarea style={{ ...inputStyle, minHeight: 160, resize: "vertical", fontFamily: "monospace", fontSize: 12.5 }} value={bulkText} onChange={(e) => { setBulkText(e.target.value); setImportResult(null); }} />
-                  <button onClick={handleBulkImport} style={primaryButtonStyle}>📋 Nhập vào tài liệu</button>
-                  {importResult && importResult.source === "paste" && (
-                    <div style={{ marginTop: 10, fontSize: 13, fontWeight: 600, color: importResult.error ? "#B3261E" : "#3D7A4E" }}>
-                      {importResult.error ? "Không nhận diện được cặp Câu hỏi - Câu trả lời nào." : `Đã nhập thành công ${importResult.added} mục.${importResult.skipped ? ` Bỏ qua ${importResult.skipped} dòng (trùng câu hỏi đã có trong Sheet hoặc thiếu nội dung).` : ""}`}
-                    </div>
-                  )}
-                </>
-              )}
-              {adminError && <div style={{ marginTop: 10, fontSize: 12.5, color: "#B3261E" }}>{adminError}</div>}
+  // Phần thân của hộp thoại Thêm / Sửa câu hỏi (dùng chung cho cả 2 chế độ)
+  function renderQuestionFormFields(isEdit) {
+    const f = isEdit ? editForm : form;
+    const setF = isEdit ? setEditForm : setForm;
+    const taRef = isEdit ? editContentRef : contentRef;
+    const quickRef = isEdit ? editQuickImageInputRef : quickImageInputRef;
+    const imgRef = isEdit ? editImageInputRef : imageInputRef;
+    const draft = isEdit ? newImageUrlDraftEdit : newImageUrlDraft;
+    const setDraft = isEdit ? setNewImageUrlDraftEdit : setNewImageUrlDraft;
+    const setContent = (v) => setF((prev) => ({ ...prev, content: v }));
+    const aliasRows = f.aliasesText === "" ? [""] : f.aliasesText.split("\n");
+    const setAliasRows = (rows) => setF((prev) => ({ ...prev, aliasesText: rows.join("\n") }));
+    const noUpload = sheetWrite;
+    return (
+      <div className="form-grid">
+        {fromUnanswered && (
+          <div className="field wide">
+            <div className="inline-ok" style={{ background: "#eef7ff", color: "#246ba5", fontWeight: 400 }}>
+              ❓ Đang xử lý câu hỏi chưa trả lời: <strong>“{fromUnanswered.question}”</strong>.{" "}
+              {fromUnanswered.asAlias
+                ? <>Câu này đã được thêm vào ô "Cách hỏi khác" của <strong>{fromUnanswered.target}</strong>. Bấm <strong>Lưu</strong> để áp dụng; câu hỏi sẽ tự được đánh dấu "Đã xử lý".</>
+                : <>{fromUnanswered.withDraft && <strong>Câu trả lời bên dưới là bản nháp do AI soạn — hãy kiểm tra kỹ trước khi lưu. </strong>}Sau khi bấm <strong>Lưu</strong>, câu hỏi này sẽ tự được đánh dấu "Đã xử lý".</>}{" "}
+              <button type="button" onClick={() => setFromUnanswered(null)} style={{ background: "transparent", border: "none", color: "#076ab7", fontWeight: 700, cursor: "pointer", padding: 0 }}>✕ Bỏ liên kết</button>
             </div>
-            )}
-
-            {renderMissingImagesWarning()}
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <div style={{ fontSize: 13, color: "#6B6255", fontWeight: 600, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span>{loadingKb ? "Đang tải..." : `Hiển thị ${filteredEntries.length} / ${kbEntries.length} mục đã nạp cho chatbot (dùng chung)`}</span>
-                <button onClick={loadKb} style={{ background: "transparent", border: "1px solid #DDD7C9", borderRadius: 8, padding: "4px 10px", fontSize: 12, cursor: "pointer", color: "#12303F" }}>
-                  🔄 Làm mới
-                </button>
+          </div>
+        )}
+        <label className="field wide">
+          <span>Danh mục *</span>
+          <select value={f.category} onChange={(e) => setF((prev) => ({ ...prev, category: e.target.value }))}>
+            {allCategories.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+          </select>
+        </label>
+        <label className="field wide">
+          <span>Câu hỏi chuẩn *</span>
+          <input placeholder="Nhập câu hỏi chuẩn" value={f.title} onChange={(e) => setF((prev) => ({ ...prev, title: e.target.value }))} />
+        </label>
+        <div className="field wide">
+          <div className="alias-head">
+            <span>Cách hỏi khác</span>
+            <span style={{ display: "inline-flex", gap: 6 }}>
+              <button type="button" className="btn secondary alias-add" disabled={suggestingAliases} onClick={() => suggestAliases(f.title, f.content, setF)}>{suggestingAliases ? "⏳ AI đang nghĩ..." : "🤖 AI gợi ý"}</button>
+              <button type="button" className="btn secondary alias-add" onClick={() => setAliasRows([...aliasRows, ""])}>＋ Thêm cách hỏi</button>
+            </span>
+          </div>
+          <div className="alias-list">
+            {aliasRows.map((v, i) => (
+              <div className="alias-row" key={i}>
+                <input value={v} placeholder="Nhập một cách hỏi khác" onChange={(e) => { const r = [...aliasRows]; r[i] = e.target.value; setAliasRows(r); }} />
+                <button type="button" className="alias-remove" aria-label="Xóa cách hỏi" onClick={() => { const r = aliasRows.filter((_, k) => k !== i); setAliasRows(r.length ? r : [""]); }}>×</button>
               </div>
-
-              <div style={{ ...card, padding: 14, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                <input
-                  style={{ ...inputStyle, marginBottom: 0, flex: "1 1 220px" }}
-                  placeholder="🔎 Tìm theo câu hỏi hoặc câu trả lời..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-                <select style={{ ...inputStyle, marginBottom: 0, width: "auto", flex: "0 0 auto" }} value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}>
-                  <option value="ALL">Tất cả danh mục</option>
-                  {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label} ({c.id})</option>)}
-                </select>
-                {(searchQuery || filterCategory !== "ALL") && (
-                  <button onClick={() => { setSearchQuery(""); setFilterCategory("ALL"); }} style={{ background: "transparent", border: "1px solid #DDD7C9", borderRadius: 8, padding: "9px 12px", fontSize: 12.5, cursor: "pointer", color: "#B5652F", fontWeight: 700 }}>
-                    ✕ Xoá lọc
-                  </button>
-                )}
-              </div>
-
-              {!loadingKb && filteredEntries.length === 0 && (
-                <div style={{ ...card, textAlign: "center", color: "#8A8272", fontSize: 13, fontStyle: "italic" }}>
-                  Không tìm thấy mục nào khớp với bộ lọc/tìm kiếm hiện tại.
-                </div>
-              )}
-
-              {filteredEntries.map((e) => (
-                <div key={e.id} style={{ ...card, padding: "14px 16px" }}>
-                  {editingId === e.id ? (
-                    <div>
-                      <div style={{ fontSize: 12, color: "#B5652F", fontWeight: 700, marginBottom: 8 }}>✏️ Đang chỉnh sửa</div>
-                      <label style={labelStyle}>Câu hỏi</label>
-                      <input style={inputStyle} placeholder="VD: Làm sao để tạo phiếu đánh giá KPI?" value={editForm.title} onChange={(ev) => setEditForm({ ...editForm, title: ev.target.value })} />
-
-                      <label style={labelStyle}>🔀 Cách hỏi khác (mỗi dòng 1 cách, tuỳ chọn)</label>
-                      <div style={{ fontSize: 11.5, color: "#8A8272", marginBottom: 4 }}>Giúp chatbot nhận ra câu hỏi dù người dùng gõ khác đi.</div>
-                      <textarea style={{ ...inputStyle, minHeight: 70, resize: "vertical" }} placeholder={"Tôi quên mật khẩu\nKhông đăng nhập được"} value={editForm.aliasesText} onChange={(ev) => setEditForm({ ...editForm, aliasesText: ev.target.value })} />
-                      <button
-                        type="button"
-                        onClick={() => suggestAliases(editForm.title, editForm.content, setEditForm)}
-                        disabled={suggestingAliases}
-                        style={{ ...outlineButton, height: "auto", padding: "6px 12px", fontSize: 12, marginBottom: 12 }}
-                      >
-                        {suggestingAliases ? "⏳ AI đang nghĩ gợi ý..." : "🤖 Nhờ AI gợi ý cách hỏi khác"}
-                      </button>
-                      <label style={labelStyle}>Danh mục</label>
-                      <select style={inputStyle} value={editForm.category} onChange={(ev) => setEditForm({ ...editForm, category: ev.target.value })}>
-                        {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label} ({c.id})</option>)}
-                      </select>
-                      <label style={labelStyle}>Câu trả lời</label>
-                      <div style={{ display: "flex", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
-                        <button type="button" title="Tiêu đề phần (đánh dấu 1 mục lớn trong câu trả lời, VD 'Phần 1: ...')" onClick={() => toggleHeading(editContentRef, editForm.content, (v) => setEditForm((prev) => ({ ...prev, content: v })))} style={{ ...formatToolbarBtn, width: "auto", padding: "0 8px", fontWeight: 700, fontSize: 12 }}>Tiêu đề</button>
-                        <button type="button" title="Đậm" onClick={() => wrapSelection(editContentRef, editForm.content, (v) => setEditForm((prev) => ({ ...prev, content: v })), "**")} style={formatToolbarBtn}><strong>B</strong></button>
-                        <button type="button" title="Nghiêng" onClick={() => wrapSelection(editContentRef, editForm.content, (v) => setEditForm((prev) => ({ ...prev, content: v })), "*")} style={formatToolbarBtn}><em>I</em></button>
-                        <button type="button" title="Gạch chân" onClick={() => wrapSelection(editContentRef, editForm.content, (v) => setEditForm((prev) => ({ ...prev, content: v })), "__")} style={formatToolbarBtn}><u>U</u></button>
-                        <button type="button" title="Danh sách gạch đầu dòng" onClick={() => prefixLines(editContentRef, editForm.content, (v) => setEditForm((prev) => ({ ...prev, content: v })), "dash")} style={formatToolbarBtn}>–≡</button>
-                        <button type="button" title="Danh sách chấm tròn" onClick={() => prefixLines(editContentRef, editForm.content, (v) => setEditForm((prev) => ({ ...prev, content: v })), "dot")} style={formatToolbarBtn}>•≡</button>
-                        <button type="button" title="Danh sách đánh số" onClick={() => prefixLines(editContentRef, editForm.content, (v) => setEditForm((prev) => ({ ...prev, content: v })), "ol")} style={formatToolbarBtn}>1.≡</button>
-                        <input
-                          ref={editQuickImageInputRef}
-                          type="file"
-                          accept="image/*"
-                          style={{ display: "none" }}
-                          onChange={async (ev) => {
-                            const file = ev.target.files && ev.target.files[0];
-                            ev.target.value = "";
-                            if (!file) return;
-                            const url = await uploadImageFile(file);
-                            if (url) insertImageIntoContent(editContentRef, editForm.content, (v) => setEditForm((prev) => ({ ...prev, content: v })), url);
-                          }}
-                        />
-                        <button type="button" title="Chèn ảnh (chọn file, tự tải lên và chèn ngay vào vị trí con trỏ)" onClick={() => editQuickImageInputRef.current && editQuickImageInputRef.current.click()} disabled={uploadingImage || sheetWrite} style={formatToolbarBtn}>
-                          {uploadingImage ? "⏳" : "🖼️"}
-                        </button>
-                        <div style={{ fontSize: 11, color: "#8A8272", alignSelf: "center", marginLeft: 4 }}><strong>Chèn ảnh dễ nhất: dán trực tiếp (Ctrl+V), kéo-thả file vào ô, hoặc bấm nút 🖼️. Nhiều ảnh liền nhau sẽ tự xếp thành 1 hàng.</strong></div>
-                      </div>
-                      <textarea
-                        ref={editContentRef}
-                        style={{ ...inputStyle, minHeight: 100, resize: "vertical" }}
-                        placeholder="Nhập câu trả lời chi tiết... (có thể dán ảnh trực tiếp bằng Ctrl+V, hoặc kéo-thả file ảnh vào đây)"
-                        value={editForm.content}
-                        onChange={(ev) => handleContentChange(ev, (v) => setEditForm((prev) => ({ ...prev, content: v })))}
-                        onKeyDown={(ev) => handleContentKeyDown(ev, editContentRef, editForm.content, (v) => setEditForm((prev) => ({ ...prev, content: v })))}
-                        onPaste={(ev) => handleContentPaste(ev, editContentRef, editForm.content, (v) => setEditForm((prev) => ({ ...prev, content: v })))}
-                        onDrop={(ev) => handleContentDrop(ev, editContentRef, editForm.content, (v) => setEditForm((prev) => ({ ...prev, content: v })))}
-                      />
-                      {editForm.content.trim() && (
-                        <div style={{ marginTop: 6, marginBottom: 12 }}>
-                          <div style={{ fontSize: 11, color: "#8A8272", marginBottom: 4 }}>👁️ Xem trước (chữ đậm/nghiêng/gạch chân/bullet hiện đúng như lúc trả lời thật):</div>
-                          <div style={{ background: "#FFFFFF", border: "1px solid #EEE9DD", borderRadius: 8, padding: 10, fontSize: 13, color: "#4A443B", lineHeight: 1.5 }}>
-                            {renderFormattedBlock(editForm.content, "preview-edit", setLightboxSrc)}
-                          </div>
-                        </div>
-                      )}
-
-                      <label style={labelStyle}>🎥 Link video hướng dẫn (tuỳ chọn)</label>
-                      <input style={inputStyle} placeholder="vd: https://youtube.com/watch?v=..." value={editForm.videoUrl} onChange={(ev) => setEditForm({ ...editForm, videoUrl: ev.target.value })} />
-
-                      <label style={labelStyle}>🖼️ Hình ảnh minh hoạ (không giới hạn số lượng, tuỳ chọn)</label>
-
-                      {editForm.images.length > 0 && (
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
-                          {editForm.images.map((url, idx) => (
-                            <div key={idx} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
-                              <div style={{ position: "relative", display: "inline-block" }}>
-                                <img src={url} alt={`Ảnh ${idx + 1}`} onClick={() => setLightboxSrc(url)} style={{ width: 90, height: 90, objectFit: "cover", borderRadius: 8, border: "1px solid #DDD7C9", cursor: "zoom-in" }} onError={(e) => { e.target.style.opacity = 0.25; }} />
-                                <button type="button" onClick={() => removeImageAt(setEditForm, idx)} style={{ position: "absolute", top: 2, right: 2, background: "rgba(18,48,63,0.8)", color: "#fff", border: "none", borderRadius: 6, padding: "1px 6px", fontSize: 11, cursor: "pointer" }}>
-                                  ✕
-                                </button>
-                              </div>
-                              <button
-                                type="button"
-                                title="Chèn ảnh này vào đúng vị trí con trỏ trong Câu trả lời"
-                                onClick={() => insertImageIntoContent(editContentRef, editForm.content, (v) => setEditForm((prev) => ({ ...prev, content: v })), url)}
-                                style={{ fontSize: 10.5, background: "#FFFFFF", border: "1px solid #DDD7C9", borderRadius: 6, padding: "2px 6px", cursor: "pointer", color: "#12303F", whiteSpace: "nowrap" }}
-                              >
-                                ➕ Chèn vào câu trả lời
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      <div style={{ display: "flex", gap: 8, marginBottom: 4 }}>
-                        <input
-                          style={{ ...inputStyle, marginBottom: 0, flex: 1 }}
-                          placeholder="Dán link ảnh rồi bấm '+ Thêm', hoặc bấm 'Tải ảnh lên' để chọn file từ máy"
-                          value={newImageUrlDraftEdit}
-                          onChange={(ev) => setNewImageUrlDraftEdit(ev.target.value)}
-                        />
-                        <button type="button" onClick={() => { addImageUrl(setEditForm, newImageUrlDraftEdit); setNewImageUrlDraftEdit(""); }} style={{ ...outlineButton, height: "auto", padding: "0 14px", flex: "0 0 auto" }}>
-                          + Thêm
-                        </button>
-                        <input ref={editImageInputRef} type="file" accept="image/*" onChange={(ev) => handleImageUpload(ev, (url) => setEditForm((prev) => ({ ...prev, images: [...prev.images, url] })))} style={{ display: "none" }} />
-                        <button type="button" onClick={() => editImageInputRef.current && editImageInputRef.current.click()} disabled={uploadingImage || sheetWrite} title={sheetWrite ? "Đang ghi vào Google Sheet: hãy dán link ảnh https://…" : undefined} style={{ ...darkButton, flex: "0 0 auto", opacity: sheetWrite ? 0.5 : 1 }}>
-                          {uploadingImage ? "⏳ Đang tải..." : "⬆️ Tải ảnh lên"}
-                        </button>
-                      </div>
-                      {uploadError && <div style={{ fontSize: 12, color: "#B3261E", marginBottom: 6 }}>{uploadError}</div>}
-
-                      <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-                        <button onClick={saveEditEntry} disabled={uploadingImage} style={{ ...primaryButtonStyle, width: "auto", flex: 1, marginTop: 0, opacity: uploadingImage ? 0.6 : 1 }}>
-                          {uploadingImage ? "⏳ Đang tải ảnh lên, vui lòng đợi..." : "💾 Lưu chỉnh sửa"}
-                        </button>
-                        <button type="button" onClick={cancelEdit} style={{ ...outlineButton, height: "auto", padding: "10px 16px", flex: "0 0 auto" }}>✕ Huỷ</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={miniLabel}>Câu hỏi</div>
-                        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{e.title}</div>
-                        {Array.isArray(e.aliases) && e.aliases.length > 0 && (
-                          <div style={{ fontSize: 11.5, color: "#8A8272", marginBottom: 4 }}>
-                            🔀 Cách hỏi khác: {e.aliases.join(" · ")}
-                          </div>
-                        )}
-                        <div style={pill}>{getCategoryLabel(e.category)}</div>
-                        <div style={miniLabel}>Câu trả lời</div>
-                        <div style={{ fontSize: 13, color: "#4A443B", lineHeight: 1.5 }}>{renderFormattedBlock(e.content, `view-${e.id}`, setLightboxSrc)}</div>
-                        {e.videoUrl && (
-                          <div style={{ marginTop: 8 }}>
-                            <a href={e.videoUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, color: "#12303F", fontWeight: 700, textDecoration: "none" }}>
-                              🎥 Video hướng dẫn ↗
-                            </a>
-                          </div>
-                        )}
-                        {getGalleryImages(e).length > 0 && (
-                          <div style={{ marginTop: 8 }}>
-                            <div style={miniLabel}>🖼️ Ảnh khác (chưa chèn vào câu trả lời) ({getGalleryImages(e).length})</div>
-                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
-                              {getGalleryImages(e).map((url, idx) => (
-                                <SafeImage key={idx} src={url} alt={e.title} onClick={() => setLightboxSrc(url)} style={{ maxWidth: 220, maxHeight: 140, borderRadius: 8, border: "1px solid #DDD7C9", cursor: "zoom-in" }} />
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                      {!sheetReadOnly && <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                        <button onClick={() => startEdit(e)} title="Chỉnh sửa" style={{ background: "transparent", border: "none", cursor: "pointer", color: "#12303F", height: "fit-content", fontSize: 16 }}>✏️</button>
-                        <button onClick={() => removeEntry(e.id)} title="Xoá" style={{ background: "transparent", border: "none", cursor: "pointer", color: "#B5652F", height: "fit-content", fontSize: 16 }}>🗑️</button>
-                      </div>}
-                    </div>
-                  )}
+            ))}
+          </div>
+        </div>
+        <div className="field wide">
+          <span>Câu trả lời *</span>
+          <div className="rich-wrap">
+            <div className="rich-toolbar" role="toolbar" aria-label="Định dạng câu trả lời">
+              <button type="button" style={{ width: "auto", padding: "0 8px" }} title="Tiêu đề phần (đánh dấu dòng hiện tại là 1 mục lớn, bấm lại để bỏ)" onClick={() => toggleHeading(taRef, f.content, setContent)}>Tiêu đề</button>
+              <span className="rich-divider" />
+              <button type="button" title="In đậm (Ctrl+B)" onClick={() => wrapSelection(taRef, f.content, setContent, "**")}><b>B</b></button>
+              <button type="button" title="In nghiêng (Ctrl+I)" onClick={() => wrapSelection(taRef, f.content, setContent, "*")}><i>I</i></button>
+              <button type="button" title="Gạch chân (Ctrl+U)" onClick={() => wrapSelection(taRef, f.content, setContent, "__")}><u>U</u></button>
+              <span className="rich-divider" />
+              <button type="button" title="Danh sách gạch đầu dòng" onClick={() => prefixLines(taRef, f.content, setContent, "dash")}>–</button>
+              <button type="button" title="Danh sách chấm tròn" onClick={() => prefixLines(taRef, f.content, setContent, "dot")}>•</button>
+              <button type="button" title="Danh sách đánh số" onClick={() => prefixLines(taRef, f.content, setContent, "ol")}>1.</button>
+              <span className="rich-divider" />
+              <input
+                ref={quickRef}
+                type="file"
+                accept="image/*"
+                style={{ display: "none" }}
+                onChange={async (e) => {
+                  const file = e.target.files && e.target.files[0];
+                  e.target.value = "";
+                  if (!file) return;
+                  const url = await uploadImageFile(file);
+                  if (url) insertImageIntoContent(taRef, f.content, setContent, url);
+                }}
+              />
+              <button type="button" title={noUpload ? "Đang ghi vào Google Sheet: không tải ảnh từ máy lên được" : "Chèn ảnh (chọn file, tự tải lên và chèn ngay vào vị trí con trỏ)"} disabled={uploadingImage || noUpload} onClick={() => quickRef.current && quickRef.current.click()}>{uploadingImage ? "⏳" : "🖼"}</button>
+            </div>
+            <textarea
+              ref={taRef}
+              className="rich-editor-ta"
+              placeholder="Nhập nội dung trả lời (có thể dán ảnh bằng Ctrl+V hoặc kéo-thả file ảnh vào đây)"
+              value={f.content}
+              onChange={(e) => handleContentChange(e, setContent)}
+              onKeyDown={(e) => handleContentKeyDown(e, taRef, f.content, setContent)}
+              onPaste={(e) => handleContentPaste(e, taRef, f.content, setContent)}
+              onDrop={(e) => handleContentDrop(e, taRef, f.content, setContent)}
+            />
+          </div>
+          <p className="hint">Định dạng: **đậm**, *nghiêng*, __gạch chân__; "- " / "• " / "1. " đầu dòng tạo danh sách; gõ "-&gt;" tự thành →. Link ảnh nằm riêng 1 dòng sẽ hiện thành ảnh đúng vị trí đó.</p>
+          {f.content.trim() && (
+            <>
+              <div className="preview-label">👁 Xem trước (đúng như khi chatbot trả lời):</div>
+              <div className="preview-box">{renderFormattedBlock(f.content, isEdit ? "preview-edit" : "preview-add", setLightboxSrc)}</div>
+            </>
+          )}
+        </div>
+        <label className="field wide">
+          <span>Link video</span>
+          <input type="url" placeholder="https://..." value={f.videoUrl} onChange={(e) => setF((prev) => ({ ...prev, videoUrl: e.target.value }))} />
+        </label>
+        <div className="field wide">
+          <div className="attachment-title">Tài liệu đính kèm (ảnh minh hoạ)</div>
+          {f.images.length > 0 && (
+            <div className="thumb-grid">
+              {f.images.map((url, idx) => (
+                <div className="thumb" key={idx}>
+                  <div className="box">
+                    <img src={url} alt={`Ảnh ${idx + 1}`} onClick={() => setLightboxSrc(url)} onError={(ev) => { ev.currentTarget.style.opacity = "0.35"; ev.currentTarget.title = "Ảnh không tải được"; }} />
+                    <button type="button" className="x" aria-label="Bỏ ảnh" onClick={() => removeImageAt(setF, idx)}>✕</button>
+                  </div>
+                  <button type="button" className="ins" title="Chèn ảnh này vào đúng vị trí con trỏ trong Câu trả lời" onClick={() => insertImageIntoContent(taRef, f.content, setContent, url)}>＋ Chèn vào câu trả lời</button>
                 </div>
               ))}
             </div>
+          )}
+          <input ref={imgRef} type="file" accept="image/*" hidden onChange={(e) => handleImageUpload(e, (url) => setF((prev) => ({ ...prev, images: [...prev.images, url] })))} />
+          <button type="button" className="attachment-upload" disabled={uploadingImage || noUpload} title={noUpload ? "Đang ghi vào Google Sheet: hãy dán link ảnh https://…" : undefined} onClick={() => imgRef.current && imgRef.current.click()}>
+            <IconUploadCloud />{uploadingImage ? "Đang tải..." : "Tải lên"}
+          </button>
+          <div className="link-row">
+            <input placeholder="Hoặc dán link ảnh rồi bấm '+ Thêm'" value={draft} onChange={(e) => setDraft(e.target.value)} />
+            <button type="button" className="btn secondary" onClick={() => { addImageUrl(setF, draft); setDraft(""); }}>+ Thêm</button>
           </div>
-        ) : tab === "chat" ? (
-          <div style={{ width: "100%", maxWidth: 620, ...card, display: "flex", flexDirection: "column", height: 560, padding: 0 }}>
-            <div style={{ padding: "10px 20px", borderBottom: "1px solid #EEE9DD", fontSize: 11.5, color: "#8A8272" }}>
+          <p className="attachment-help">{noUpload ? "Đang ghi dữ liệu vào Google Sheet nên không tải ảnh từ máy lên được (ổ đĩa Render là tạm thời). Hãy dán link ảnh https://… hoặc đưa file ảnh vào thư mục public/uploads trên GitHub rồi ghi /uploads/ten-anh.png." : "Ảnh tải lên được lưu trên server. Trên gói Free của Render ảnh có thể mất khi server khởi động lại — nên dùng link ảnh hoặc đưa file vào public/uploads trên GitHub."}</p>
+          {uploadError && <div className="note-line err">{uploadError}</div>}
+        </div>
+        {adminError && <div className="field wide"><div className="inline-alert">{adminError}</div></div>}
+      </div>
+    );
+  }
+
+  // ===== Dẫn xuất cho giao diện mới =====
+  const customNames = [...new Set([...(settings.customCategories || []), ...kbEntries.map((e) => e.category).filter((c) => c && !CATEGORIES.some((b) => b.id === c))])];
+  const allCategories = [...CATEGORIES.map((c) => ({ id: c.id, label: c.label })), ...customNames.map((n) => ({ id: n, label: n }))];
+  const catCount = (id) => kbEntries.filter((e) => (e.category || "KHAC") === id).length;
+  const treeKey = catTreeSearch.trim().toLowerCase();
+  const treeRows = allCategories.filter((c) => !treeKey || c.label.toLowerCase().includes(treeKey));
+  const libPages = Math.max(1, Math.ceil(filteredEntries.length / libSize));
+  const libCur = Math.min(libPage, libPages);
+  const libRows = filteredEntries.slice((libCur - 1) * libSize, libCur * libSize);
+  const canEditKb = !sheetReadOnly;
+  const suggestedEntries = kbEntries.filter((e) => e.visible !== false && e.suggested === true).slice(0, 8);
+  const detailEntry = detailId ? kbEntries.find((e) => e.id === detailId) : null;
+  const unPages = Math.max(1, Math.ceil(filteredUnanswered.length / unSize));
+  const unCur = Math.min(unPage, unPages);
+  const unRows = filteredUnanswered.slice((unCur - 1) * unSize, unCur * unSize);
+  const allUnSelected = filteredUnanswered.length > 0 && filteredUnanswered.every((u) => selectedUn.has(u.id));
+  const apKey = apSearch.trim().toLowerCase();
+  const apFiltered = kbEntries.filter((e) => (apCat === "ALL" || e.category === apCat) && (!apKey || (e.title + " " + (e.aliases || []).join(" ")).toLowerCase().includes(apKey)));
+  const apPages = Math.max(1, Math.ceil(apFiltered.length / apSize));
+  const apCur = Math.min(apPage, apPages);
+  const apRows = apFiltered.slice((apCur - 1) * apSize, apCur * apSize);
+
+  return (
+    <div>
+      <header className="top">
+        <div className="brand">HR<b>Office</b></div>
+        <div className="navtop"><span>♧ Quản lý nhân sự</span><span>▥ Đánh giá hiệu suất</span><span>▣ Đánh giá năng lực</span><span>◴ Khảo sát nội bộ</span></div>
+        <div className="spacer" />
+        <span>🔔</span>
+        <div className="profile"><span className="avatar">SA</span><div>Super Admin<br /><small>Quản trị hệ thống</small></div></div>
+      </header>
+      <div className="shell">
+        <aside className="sidebar">
+          <div className="nav-title">Hệ thống</div>
+          <div className="navitem">⌂ &nbsp; Trang chủ</div>
+          <div className="navitem">☷ &nbsp; Danh mục</div>
+          <div className="navitem">⚙ &nbsp; Cấu hình hệ thống</div>
+          <div className="navitem active">◉ &nbsp; AI hỏi đáp</div>
+          <div className={"navitem sub" + (tab === "kb" ? " active" : "")} role="button" onClick={() => setTab("kb")}>Quản lý Chatbot</div>
+          <div className={"navitem sub" + (tab === "unanswered" ? " active" : "")} role="button" onClick={() => { setTab("unanswered"); loadUnanswered(); }}>Câu hỏi chưa tìm thấy</div>
+          <div className="navitem">▤ &nbsp; Hướng dẫn sử dụng</div>
+        </aside>
+        <main className="main">
+          <div className="crumb">AI hỏi đáp / <b>Quản lý Chatbot</b></div>
+          <div className="titlebar"><div><h1>Quản lý Chatbot</h1></div></div>
+          <div className="tabs" role="tablist">
+            {[["kb", "Thư viện câu hỏi"], ["unanswered", "Câu hỏi chưa tìm thấy"], ["conversation", "Cấu hình hội thoại"], ["chat", "Chat thử nghiệm"], ["settings", "Cài đặt hệ thống"]].map(([id, label]) => (
+              <button key={id} type="button" className={"tab" + (tab === id ? " active" : "")} data-tab={id} role="tab" onClick={() => { setTab(id); if (id === "unanswered") loadUnanswered(); }}>
+                {label}{id === "unanswered" && openUnansweredCount > 0 ? ` (${openUnansweredCount})` : ""}
+              </button>
+            ))}
+          </div>
+
+          {tab === "kb" && (
+            <>
+              <div className="stack">
+                {sheetMode && renderSheetPanel()}
+                {renderMissingImagesWarning()}
+                {adminError && <div className="inline-alert">{adminError}</div>}
+              </div>
+              <div className="workspace">
+                <aside className="card">
+                  <div className="tree-head">
+                    <div className="tree-title">
+                      <b>Danh mục câu hỏi</b>
+                      {canEditKb && <button type="button" id="addCategory" className="add-category-icon" aria-label="Thêm danh mục" title="Thêm danh mục" onClick={() => { setCategoryName(""); setCategoryOpen(true); }}><IconAddCategory /></button>}
+                    </div>
+                    <input className="search" placeholder="Tìm danh mục..." value={catTreeSearch} onChange={(e) => setCatTreeSearch(e.target.value)} />
+                  </div>
+                  <div className="tree">
+                    <div className={"tree-row all" + (filterCategory === "ALL" ? " selected" : "")} data-tree="ALL" onClick={() => { setFilterCategory("ALL"); setLibPage(1); }}><span>Tất cả danh mục</span><span className="count">{kbEntries.length}</span></div>
+                    {treeRows.map((c) => (
+                      <div key={c.id} className={"tree-row" + (filterCategory === c.id ? " selected" : "")} data-tree={c.id} onClick={() => { setFilterCategory(c.id); setLibPage(1); }}>
+                        <span>{c.label}</span><span className="count">{catCount(c.id)}</span>
+                      </div>
+                    ))}
+                    {treeRows.length === 0 && <div className="empty">Không có danh mục phù hợp</div>}
+                  </div>
+                </aside>
+                <section className="card list-card">
+                  <div className="toolbar">
+                    <input className="search" placeholder="Tìm câu hỏi, cách hỏi khác..." value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); setLibPage(1); }} />
+                    <button type="button" id="refresh" className="btn secondary icon" title="Làm mới" onClick={() => { setSearchQuery(""); setFilterCategory("ALL"); setCatTreeSearch(""); setLibPage(1); loadKb(); toast("Đã làm mới danh sách"); }}>↻</button>
+                    <div className="space" />
+                    {canEditKb && <button type="button" id="import" className="btn secondary" onClick={() => { setImportMode("excel"); setImportResult(null); setAdminError(""); setImportOpen(true); }}>⇧ Import Excel</button>}
+                    {canEditKb && <button type="button" id="addQuestion" className="btn" onClick={openAdd}>＋ Thêm mới</button>}
+                  </div>
+                  <div className="table-wrap">
+                    <table className="table">
+                      <thead><tr><th>STT</th><th>Câu hỏi chuẩn</th><th>Danh mục</th><th>Cách hỏi khác</th><th>Hiển thị</th><th>Câu hỏi gợi ý</th><th>Thao tác</th></tr></thead>
+                      <tbody id="questionRows">
+                        {loadingKb && <tr><td colSpan="7" className="empty">Đang tải...</td></tr>}
+                        {!loadingKb && libRows.length === 0 && <tr><td colSpan="7" className="empty">Không có câu hỏi phù hợp</td></tr>}
+                        {libRows.map((e, i) => {
+                          const visible = e.visible !== false;
+                          const suggested = visible && e.suggested === true;
+                          return (
+                            <tr key={e.id}>
+                              <td>{(libCur - 1) * libSize + i + 1}</td>
+                              <td>
+                                <span className="question link" role="button" tabIndex={0} onClick={() => setDetailId(e.id)}>{e.title}</span>
+                                <span className="subtext">{plainPreview(e.content, 62)}</span>
+                              </td>
+                              <td><span className="tag">{getCategoryLabel(e.category)}</span></td>
+                              <td>{Array.isArray(e.aliases) ? e.aliases.length : 0}</td>
+                              <td>
+                                <label className={"switch" + (sheetReadOnly ? " disabled" : "")} title={sheetReadOnly ? "Chỉ đọc: đổi trong cột G của Google Sheet" : visible ? "Đang hiển thị" : "Đang ẩn"}>
+                                  <input type="checkbox" data-visible={e.id} checked={visible} disabled={sheetReadOnly || flagBusy === e.id + "visible"} onChange={(ev) => toggleFlag(e, "visible", ev.target.checked)} />
+                                  <span className="slider" />
+                                </label>
+                              </td>
+                              <td>
+                                <label className={"switch" + (!visible || sheetReadOnly ? " disabled" : "")} title={sheetReadOnly ? "Chỉ đọc: đổi trong cột H của Google Sheet" : !visible ? "Cần bật hiển thị câu hỏi trước" : suggested ? "Đang là câu hỏi gợi ý" : "Bật để hiện khi mở chatbot"}>
+                                  <input type="checkbox" data-suggested={e.id} checked={suggested} disabled={!visible || sheetReadOnly || flagBusy === e.id + "suggested"} onChange={(ev) => toggleFlag(e, "suggested", ev.target.checked)} />
+                                  <span className="slider" />
+                                </label>
+                              </td>
+                              <td>
+                                {canEditKb ? (
+                                  <>
+                                    <button type="button" className="action-icon" title="Sửa" aria-label="Sửa" data-edit-question={e.id} onClick={() => startEdit(e)}><IconEdit /></button>
+                                    <button type="button" className="action-icon" title="Xóa" aria-label="Xóa" data-delete-question={e.id} onClick={() => { if (window.confirm("Xóa câu hỏi này?")) removeEntry(e.id); }}><IconDelete /></button>
+                                  </>
+                                ) : (
+                                  <button type="button" className="btn secondary" style={{ height: 30, padding: "0 10px", fontSize: 12 }} data-view-question={e.id} onClick={() => setDetailId(e.id)}>Xem</button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="footerbar">
+                    <span>Mỗi trang <select id="libraryPageSize" className="page-size" value={libSize} onChange={(e) => { setLibSize(Number(e.target.value)); setLibPage(1); }}><option value="10">10</option><option value="20">20</option><option value="50">50</option></select> trong tổng số <b id="recordTotal">{filteredEntries.length}</b></span>
+                    <span id="libraryPager" className="pager">{renderPager(libCur, libPages, setLibPage)}</span>
+                  </div>
+                </section>
+              </div>
+            </>
+          )}
+
+          {tab === "unanswered" && (
+            <section className="card unanswered-card">
+              <div className="unanswered-head">
+                <div>
+                  <h2>Phản hồi không tìm thấy</h2>
+                  <p>Chatbot tự ghi lại mỗi câu hỏi mà tài liệu không có, người dùng thấy chưa đúng ý, hoặc AI cũng không trả lời được. Các cách hỏi giống nhau được gộp lại và đếm số lần.</p>
+                  {unansweredMeta && (
+                    <div className="unanswered-note" style={{ background: unansweredMeta.webhookConfigured ? "#eaf5ec" : "#fff6ec" }}>
+                      {unansweredMeta.webhookConfigured
+                        ? "✅ Mỗi câu hỏi mới cũng được gửi sang nơi lưu bên ngoài (webhook), nên không mất khi server khởi động lại."
+                        : "⚠️ Chưa cấu hình nơi lưu bền vững (biến UNANSWERED_WEBHOOK_URL). Trên gói Free của Render, danh sách này sẽ mất khi server ngủ hoặc khởi động lại — hãy cấu hình webhook (xem README)."}
+                      {" "}Server khởi động lúc {unansweredMeta.startedAt ? new Date(unansweredMeta.startedAt).toLocaleString("vi-VN") : "—"}.
+                    </div>
+                  )}
+                </div>
+                <div className="unanswered-head-actions">
+                  <label className="select-all-tick" title="Chọn tất cả trong danh sách">
+                    <input id="selectAllUnanswered" type="checkbox" checked={allUnSelected} onChange={(e) => setSelectedUn(e.target.checked ? new Set(filteredUnanswered.map((u) => u.id)) : new Set())} /> Chọn tất cả
+                  </label>
+                  <button type="button" id="deleteSelectedUnanswered" className="btn secondary delete-outline delete-icon-only delete-selected" title="Xóa mục đã chọn" aria-label="Xóa mục đã chọn" disabled={selectedUn.size === 0} onClick={() => deleteUnansweredMany([...selectedUn])}><IconTrash /></button>
+                  <button type="button" id="exportUnanswered" className="btn secondary" title="Xuất Excel đúng định dạng file nhập: điền câu trả lời rồi nhập lại" onClick={exportUnansweredExcel}>⇩ Xuất Excel</button>
+                  <button type="button" className="btn secondary" disabled={unansweredLoading} onClick={() => loadUnanswered()}>{unansweredLoading ? "⏳ Đang tải..." : "↻ Làm mới"}</button>
+                  <button type="button" className="btn secondary" title="Chạy lại tìm kiếm với tài liệu hiện tại, tự đóng những câu đã có đáp án" onClick={recheckUnanswered}>✅ Tự đóng câu đã có đáp án</button>
+                  {sheetMode && (sheetStatus.editUrl || sheetStatus.sheetUrl) && <a href={sheetStatus.editUrl || sheetStatus.sheetUrl} target="_blank" rel="noreferrer" className="btn secondary" style={{ display: "inline-flex", alignItems: "center", textDecoration: "none" }}>📝 Mở Google Sheet</a>}
+                  {unansweredCounts.closed > 0 && <button type="button" className="btn secondary" onClick={cleanClosedUnanswered}>🧹 Dọn đã xử lý</button>}
+                </div>
+              </div>
+              <div className="status-tabs" role="tablist">
+                {[["all", "Tất cả"], ["new", "Chưa xử lý"], ["resolved", "Đã xử lý"], ["ignored", "Bỏ qua"]]
+                  .concat(unansweredCounts.attention > 0 ? [["attention", "Cần chú ý"]] : [], unansweredCounts.ai_ok > 0 ? [["ai_ok", "AI trả lời được"]] : [])
+                  .map(([id, label]) => (
+                    <button key={id} type="button" className={"status-tab" + ((unansweredFilter === id || (unansweredFilter === "open" && id === "new")) ? " active" : "")} data-unanswered-status={id} onClick={() => { setUnansweredFilter(id); setUnPage(1); }}>
+                      {label} <span>({unansweredCounts[id]})</span>
+                    </button>
+                  ))}
+              </div>
+              {unansweredNote && <div className={"note-line " + (unansweredNote.ok ? "ok" : "err")} style={{ marginTop: 0, marginBottom: 12 }}>{unansweredNote.ok ? "✅ " : "❌ "}{unansweredNote.message}</div>}
+              {unansweredError && <div className="inline-alert" style={{ marginBottom: 12 }}>❌ {unansweredError}</div>}
+              <div id="unansweredList" className="unanswered-list">
+                {!unansweredError && unRows.length === 0 && <div className="empty">{(unansweredFilter === "new" || unansweredFilter === "open") ? "🎉 Hiện chưa có câu hỏi nào cần xử lý." : "Không có câu hỏi ở trạng thái này"}</div>}
+                {unRows.map((u) => {
+                  const others = (u.samples || []).filter((x) => x !== u.question);
+                  const badge = u.status === "resolved" ? "handled" : u.status === "ignored" ? "ignored" : needsAttention(u) ? "" : reasonCount(u, "ai_answered") > 0 ? "ai" : "";
+                  return (
+                    <article className="unanswered-item" key={u.id}>
+                      <div className="item-check">
+                        <input type="checkbox" aria-label={"Chọn câu hỏi " + u.question} data-select-unanswered={u.id} checked={selectedUn.has(u.id)} onChange={(e) => setSelectedUn((prev) => { const n = new Set(prev); if (e.target.checked) n.add(u.id); else n.delete(u.id); return n; })} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div className="unanswered-item-head">
+                            <div>
+                              <div className="unanswered-question">{u.question}</div>
+                              <div className="unanswered-meta">Hỏi {u.count} lần · Gần nhất {new Date(u.lastAt).toLocaleString("vi-VN")}</div>
+                            </div>
+                            <span className={"status-badge " + badge}>{u.status === "resolved" ? "Đã xử lý" : u.status === "ignored" ? "Đã bỏ qua" : "Chưa xử lý"}</span>
+                          </div>
+                          <div style={{ marginTop: 10 }}>
+                            {Object.keys(UNANSWERED_REASON_LABELS).filter((k) => reasonCount(u, k) > 0).map((k) => (
+                              <span key={k} className={"reason-chip" + (k === "ai_unknown" || k === "escalated" ? " warn" : "")}>{UNANSWERED_REASON_LABELS[k]} ×{reasonCount(u, k)}</span>
+                            ))}
+                          </div>
+                          {others.length > 0 && <div className="unanswered-note">🔀 Các cách hỏi khác: {others.join(" · ")}</div>}
+                          {u.nearTitles && u.nearTitles.length > 0 && <div className="unanswered-note">📄 Đã gợi ý nhưng chưa đúng ý: {u.nearTitles.join(" · ")}</div>}
+                          {u.draftAnswer && (
+                            <details className="draft-box">
+                              <summary>🤖 Xem bản nháp do AI soạn (cần kiểm tra trước khi dùng)</summary>
+                              <div>{u.draftAnswer}</div>
+                            </details>
+                          )}
+                          {u.note && <div className="unanswered-note">📝 {u.note}</div>}
+                          <div className="unanswered-actions">
+                            {u.status === "new" ? (
+                              <>
+                                {sheetReadOnly ? (
+                                  <>
+                                    <button type="button" className="btn" data-copy-row={u.id} onClick={() => copyRowForSheet(u, false)}>📋 Sao chép để dán vào Sheet</button>
+                                    {u.draftAnswer && <button type="button" className="btn secondary" onClick={() => copyRowForSheet(u, true)}>📋 Sao chép kèm bản nháp AI</button>}
+                                  </>
+                                ) : (
+                                  <>
+                                    <button type="button" className="btn" data-create-question={u.id} onClick={() => startFromUnanswered(u, false)}>＋ Tạo câu hỏi mới</button>
+                                    {u.draftAnswer && <button type="button" className="btn secondary" onClick={() => startFromUnanswered(u, true)}>＋ Tạo kèm bản nháp AI</button>}
+                                  </>
+                                )}
+                                <button type="button" className="btn secondary" data-add-alias={u.id} onClick={() => { setApCat("ALL"); setApSearch(""); setApPage(1); setAliasPicker({ rec: u }); }}>Thêm vào cách hỏi khác</button>
+                                <button type="button" className="btn secondary" onClick={() => updateUnanswered(u.id, "resolved", "Đã xử lý thủ công")}>✓ Đánh dấu đã xử lý</button>
+                                <button type="button" className="btn secondary ignore" data-ignore-unanswered={u.id} onClick={() => updateUnanswered(u.id, "ignored")}>Bỏ qua</button>
+                              </>
+                            ) : (
+                              <button type="button" className="btn secondary" onClick={() => updateUnanswered(u.id, "new", "")}>↩︎ Mở lại</button>
+                            )}
+                            <button type="button" className="btn secondary delete-outline delete-icon-only delete-one" title="Xóa" aria-label="Xóa" data-delete-unanswered={u.id} onClick={() => deleteUnanswered(u.id)}><IconTrash /></button>
+                          </div>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+              <div className="footerbar">
+                <span>Mỗi trang <select id="unansweredPageSize" className="page-size" value={unSize} onChange={(e) => { setUnSize(Number(e.target.value)); setUnPage(1); }}><option value="10">10</option><option value="20">20</option><option value="50">50</option></select> trong tổng số <b id="unansweredTotal">{filteredUnanswered.length}</b></span>
+                <span id="unansweredPager" className="pager">{renderPager(unCur, unPages, setUnPage)}</span>
+              </div>
+            </section>
+          )}
+
+          {tab === "conversation" && (
+            <section className="card conversation-card">
+              <header><h2>Cấu hình hội thoại</h2></header>
+              <div className="conversation-form">
+                <label className="field"><span>Lời chào mở đầu</span><textarea id="welcomeMessage" rows="4" value={settingsForm.greeting || ""} onChange={(e) => setSettingsForm({ ...settingsForm, greeting: e.target.value })} /></label>
+                <label className="field"><span>Phản hồi khi không tìm thấy kết quả phù hợp</span><textarea id="noResultMessage" rows="4" value={settingsForm.noResultMessage || ""} onChange={(e) => setSettingsForm({ ...settingsForm, noResultMessage: e.target.value })} /><small>Nội dung này hiện ra khi chatbot không tìm thấy câu trả lời trong tài liệu.</small></label>
+                <label className="field expert-contact"><span>Email chuyên gia hỗ trợ (dự phòng)</span><input type="email" placeholder="vd: hotro@congty.vn" value={settingsForm.expertEmail || ""} onChange={(e) => setSettingsForm({ ...settingsForm, expertEmail: e.target.value })} /><small>Dùng khi chưa kết nối Zalo OA (xem README): câu hỏi chuyển chuyên gia sẽ được ghi lại ở tab Cài đặt hệ thống.</small></label>
+                {adminError && <div className="inline-alert">{adminError}</div>}
+              </div>
+              <footer><button type="button" id="saveConversation" className="btn" onClick={saveSettings}>{settingsSaved ? "✅ Đã lưu" : "Lưu cấu hình"}</button></footer>
+            </section>
+          )}
+
+          {tab === "chat" && (
+          <div className="card chat-wrap" style={{ display: "flex", flexDirection: "column", height: 600, padding: 0 }}>
+            <div style={{ padding: "10px 20px", borderBottom: "1px solid #e9eef3", fontSize: 11.5, color: "#718096" }}>
               💡 Chatbot tìm câu trả lời có sẵn trong tài liệu trước (miễn phí, tức thì) — chỉ gọi AI khi bạn chủ động bấm "Hỏi AI". Câu hỏi mà chatbot chưa trả lời được sẽ được ghi lại (không kèm thông tin người hỏi) để bổ sung tài liệu.
             </div>
             <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
-              {messages.length === 0 && <div style={bubbleAssistant}>{settings.greeting || DEFAULT_GREETING}</div>}
+              {messages.length === 0 && (
+                <div>
+                  <div style={bubbleAssistant}>{settings.greeting || DEFAULT_GREETING}</div>
+                  {suggestedEntries.length > 0 && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+                      {suggestedEntries.map((e) => <button key={e.id} type="button" className="chip" data-suggested-chip={e.id} onClick={() => sendMessage(e.title)}>{e.title}</button>)}
+                    </div>
+                  )}
+                </div>
+              )}
               {messages.map((m, i) => (
                 <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: m.role === "user" ? "flex-end" : "flex-start", gap: 6, maxWidth: "100%" }}>
                   {m.role === "assistant" && m.source === "kb" && (
                     <div style={{ fontSize: 10.5, fontWeight: 700, color: "#3D7A4E", textTransform: "uppercase", letterSpacing: "0.03em" }}>🔍 Từ tài liệu — không dùng AI</div>
                   )}
                   {m.role === "assistant" && m.source === "ai" && (
-                    <div style={{ fontSize: 10.5, fontWeight: 700, color: "#B5652F", textTransform: "uppercase", letterSpacing: "0.03em" }}>🤖 Claude AI</div>
+                    <div style={{ fontSize: 10.5, fontWeight: 700, color: "#076ab7", textTransform: "uppercase", letterSpacing: "0.03em" }}>🤖 Claude AI</div>
                   )}
                   {m.role === "assistant" && m.source === "ambiguous" && (
                     <div style={{ fontSize: 10.5, fontWeight: 700, color: "#8A6D00", textTransform: "uppercase", letterSpacing: "0.03em" }}>🔍 Có vài mục gần giống nhau</div>
@@ -1962,7 +2250,7 @@ function App() {
                         <button
                           key={ci}
                           onClick={() => selectAmbiguousCandidate(i, c)}
-                          style={{ textAlign: "left", background: "#FFFFFF", border: "1px solid #DDD7C9", borderRadius: 8, padding: "8px 12px", fontSize: 13, cursor: "pointer", color: "#12303F", lineHeight: 1.4 }}
+                          style={{ textAlign: "left", background: "#FFFFFF", border: "1px solid #dce4ed", borderRadius: 8, padding: "8px 12px", fontSize: 13, cursor: "pointer", color: "#076ab7", lineHeight: 1.4 }}
                         >
                           {c.title}
                         </button>
@@ -1981,7 +2269,7 @@ function App() {
                     </div>
                   )}
                   {m.role === "assistant" && m.source === "kb" && (
-                    <button onClick={() => askAI(i)} disabled={m.asking} style={{ background: "transparent", border: "none", color: "#8A8272", fontSize: 11.5, textDecoration: "underline", cursor: "pointer", padding: 0 }}>
+                    <button onClick={() => askAI(i)} disabled={m.asking} style={{ background: "transparent", border: "none", color: "#718096", fontSize: 11.5, textDecoration: "underline", cursor: "pointer", padding: 0 }}>
                       {m.asking ? "⏳ Đang hỏi AI..." : "Chưa đúng ý bạn? Hỏi AI thêm"}
                     </button>
                   )}
@@ -1993,127 +2281,30 @@ function App() {
                   {m.role === "assistant" && m.escalateError && <div style={{ fontSize: 11, color: "#B3261E" }}>{m.escalateError}</div>}
                 </div>
               ))}
-              {loading && <div style={{ alignSelf: "flex-start", color: "#6B6255", fontSize: 13 }}>⏳ Đang hỏi AI...</div>}
+              {loading && <div style={{ alignSelf: "flex-start", color: "#5b6b7e", fontSize: 13 }}>⏳ Đang hỏi AI...</div>}
             </div>
-            <div style={{ display: "flex", gap: 8, padding: 14, borderTop: "1px solid #EEE9DD" }}>
+            <div style={{ display: "flex", gap: 8, padding: 14, borderTop: "1px solid #e9eef3" }}>
               <input style={{ ...inputStyle, marginBottom: 0, flex: 1 }} placeholder="Nhập câu hỏi của bạn..." value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown} />
               <button onClick={sendMessage} disabled={loading} style={{ ...primaryButtonStyle, width: "auto", margin: 0, padding: "0 16px" }}>➤</button>
             </div>
           </div>
-        ) : tab === "unanswered" ? (
-          <div style={{ width: "100%", maxWidth: 760, display: "flex", flexDirection: "column", gap: 14 }}>
-            <div style={card}>
-              <div style={sectionTitle}>❓ Câu hỏi chatbot chưa trả lời được</div>
-              <div style={{ fontSize: 12.5, color: "#6B6255", lineHeight: 1.6 }}>
-                Chatbot tự ghi lại mỗi câu hỏi mà tài liệu không có, hoặc người dùng thấy chưa đúng ý, hoặc AI cũng không trả lời được. Các cách hỏi giống nhau được gộp lại và đếm số lần — hãy bổ sung tài liệu cho những câu lặp lại nhiều nhất. Câu bạn gõ thử ở tab Chat cũng được ghi nhận; bấm "Bỏ qua" nếu là câu thử.
-              </div>
-              {unansweredMeta && (
-                <div style={{ fontSize: 11.5, lineHeight: 1.6, marginTop: 8, padding: "6px 10px", borderRadius: 8, background: unansweredMeta.webhookConfigured ? "#EAF5EC" : "#FFF9F0", color: unansweredMeta.webhookConfigured ? "#3D7A4E" : "#8A6D00" }}>
-                  {unansweredMeta.webhookConfigured
-                    ? "✅ Mỗi câu hỏi mới cũng được gửi sang nơi lưu bên ngoài (webhook), nên không mất khi server khởi động lại."
-                    : "⚠️ Chưa cấu hình nơi lưu bền vững (biến UNANSWERED_WEBHOOK_URL). Trên gói Free của Render, danh sách này sẽ mất khi server ngủ hoặc khởi động lại — hãy xử lý / tải Excel thường xuyên, hoặc cấu hình lưu sang Google Sheet (xem README)."}
-                  {" "}Server khởi động lúc {unansweredMeta.startedAt ? new Date(unansweredMeta.startedAt).toLocaleString("vi-VN") : "—"}.
-                </div>
-              )}
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 12 }}>
-                <select value={unansweredFilter} onChange={(e) => setUnansweredFilter(e.target.value)} style={{ ...inputStyle, width: "auto", marginBottom: 0, flex: "1 1 240px" }}>
-                  <option value="open">Chưa xử lý ({unansweredCounts.open})</option>
-                  <option value="attention">Cần chú ý — AI cũng không trả lời được ({unansweredCounts.attention})</option>
-                  <option value="ai_ok">AI trả lời được — nên bổ sung vào tài liệu ({unansweredCounts.ai_ok})</option>
-                  <option value="closed">Đã xử lý / bỏ qua ({unansweredCounts.closed})</option>
-                  <option value="all">Tất cả ({unansweredCounts.all})</option>
-                </select>
-                <button type="button" onClick={loadUnanswered} disabled={unansweredLoading} style={outlineButton}>{unansweredLoading ? "⏳ Đang tải..." : "🔄 Làm mới"}</button>
-                <button type="button" onClick={recheckUnanswered} style={outlineButton} title="Chạy lại tìm kiếm với tài liệu hiện tại, tự đóng những câu đã có đáp án">✅ Tự đóng câu đã có đáp án</button>
-                <button type="button" onClick={exportUnansweredExcel} style={outlineButton} title="Xuất Excel đúng định dạng file nhập: điền câu trả lời rồi nhập lại">📥 Tải Excel</button>
-                {sheetMode && (sheetStatus.editUrl || sheetStatus.sheetUrl) && <a href={sheetStatus.editUrl || sheetStatus.sheetUrl} target="_blank" rel="noreferrer" style={{ ...outlineButton, display: "inline-flex", alignItems: "center", textDecoration: "none" }}>📝 Mở Google Sheet</a>}
-                {unansweredCounts.closed > 0 && <button type="button" onClick={cleanClosedUnanswered} style={outlineButton}>🧹 Dọn đã xử lý</button>}
-              </div>
-              {unansweredNote && (
-                <div style={{ marginTop: 10, fontSize: 12.5, fontWeight: 600, color: unansweredNote.ok ? "#3D7A4E" : "#B3261E" }}>
-                  {unansweredNote.ok ? "✅ " : "❌ "}{unansweredNote.message}
-                </div>
-              )}
-              {unansweredError && <div style={{ marginTop: 10, fontSize: 12.5, fontWeight: 600, color: "#B3261E" }}>❌ {unansweredError}</div>}
-            </div>
+          )}
 
-            {!unansweredError && filteredUnanswered.length === 0 && (
-              <div style={{ ...card, textAlign: "center", color: "#8A8272", fontSize: 13 }}>
-                {unansweredFilter === "open" ? "🎉 Hiện chưa có câu hỏi nào cần xử lý." : "Chưa có câu hỏi nào trong mục này."}
-              </div>
-            )}
-
-            {filteredUnanswered.map((u) => {
-              const others = (u.samples || []).filter((x) => x !== u.question);
-              return (
-                <div key={u.id} style={{ ...card, padding: "14px 16px" }}>
-                  <div style={{ fontWeight: 700, fontSize: 14.5, lineHeight: 1.4 }}>{u.question}</div>
-                  <div style={{ fontSize: 11.5, color: "#8A8272", marginTop: 3 }}>
-                    Hỏi <strong>{u.count}</strong> lần · gần nhất {new Date(u.lastAt).toLocaleString("vi-VN")}
-                    {u.status !== "new" && <> · <strong>{u.status === "resolved" ? "Đã xử lý" : "Bỏ qua"}</strong></>}
-                  </div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
-                    {Object.keys(UNANSWERED_REASON_LABELS).filter((k) => reasonCount(u, k) > 0).map((k) => {
-                      const warn = k === "ai_unknown" || k === "escalated";
-                      return (
-                        <span key={k} style={{ ...pill, margin: 0, color: warn ? "#B3261E" : "#B5652F", background: warn ? "#FDECEA" : "#F6E9DE" }}>
-                          {UNANSWERED_REASON_LABELS[k]} ×{reasonCount(u, k)}
-                        </span>
-                      );
-                    })}
-                  </div>
-                  {others.length > 0 && <div style={{ fontSize: 12, color: "#6B6255", marginTop: 8 }}>🔀 Các cách hỏi khác: {others.join(" · ")}</div>}
-                  {u.nearTitles && u.nearTitles.length > 0 && <div style={{ fontSize: 12, color: "#6B6255", marginTop: 4 }}>📄 Đã gợi ý nhưng chưa đúng ý: {u.nearTitles.join(" · ")}</div>}
-                  {u.draftAnswer && (
-                    <details style={{ marginTop: 8 }}>
-                      <summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 600, color: "#12303F" }}>🤖 Xem bản nháp do AI soạn (cần kiểm tra trước khi dùng)</summary>
-                      <div style={{ fontSize: 12.5, color: "#4A443B", lineHeight: 1.55, whiteSpace: "pre-wrap", background: "#FCFBF8", border: "1px solid #EEE9DD", borderRadius: 8, padding: 10, marginTop: 6 }}>{u.draftAnswer}</div>
-                    </details>
-                  )}
-                  {u.note && <div style={{ fontSize: 11.5, color: "#8A8272", marginTop: 6 }}>📝 {u.note}</div>}
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-                    {u.status === "new" ? (
-                      <>
-                        {sheetReadOnly ? (
-                          <>
-                            <button type="button" onClick={() => copyRowForSheet(u, false)} style={{ ...darkButton, height: 32 }}>📋 Sao chép để dán vào Sheet</button>
-                            {u.draftAnswer && <button type="button" onClick={() => copyRowForSheet(u, true)} style={{ ...outlineButton, height: 32 }}>📋 Sao chép kèm bản nháp AI</button>}
-                          </>
-                        ) : (
-                          <>
-                            <button type="button" onClick={() => startFromUnanswered(u, false)} style={{ ...darkButton, height: 32 }}>➕ Tạo mục tài liệu</button>
-                            {u.draftAnswer && <button type="button" onClick={() => startFromUnanswered(u, true)} style={{ ...outlineButton, height: 32 }}>➕ Tạo mục kèm bản nháp AI</button>}
-                          </>
-                        )}
-                        <button type="button" onClick={() => updateUnanswered(u.id, "resolved", "Đã xử lý thủ công")} style={{ ...outlineButton, height: 32 }}>✓ Đã xử lý</button>
-                        <button type="button" onClick={() => updateUnanswered(u.id, "ignored")} style={{ ...outlineButton, height: 32 }}>Bỏ qua</button>
-                      </>
-                    ) : (
-                      <>
-                        <button type="button" onClick={() => updateUnanswered(u.id, "new", "")} style={{ ...outlineButton, height: 32 }}>↩︎ Mở lại</button>
-                        <button type="button" onClick={() => deleteUnanswered(u.id)} style={{ ...outlineButton, height: 32 }}>🗑️ Xoá</button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div style={{ width: "100%", maxWidth: 760, display: "flex", flexDirection: "column", gap: 20 }}>
+          {tab === "settings" && (
+            <div className="settings-stack">
             {renderMissingImagesWarning()}
             {renderSheetPanel()}
             <div style={{ ...card, border: "1px solid #F0D9BE", background: "#FFF9F0" }}>
               <div style={sectionTitle}>🗄️ Sao lưu &amp; khôi phục dữ liệu</div>
-              <div style={{ fontSize: 12.5, color: "#6B6255", lineHeight: 1.6, marginBottom: 12 }}>
+              <div style={{ fontSize: 12.5, color: "#5b6b7e", lineHeight: 1.6, marginBottom: 12 }}>
                 ⚠️ Dữ liệu (tài liệu, cài đặt, ảnh) lưu trên ổ đĩa tạm của server — <strong>gói Free của Render xoá sạch mỗi khi server ngủ hoặc deploy lại</strong>. Để khỏi phải khôi phục thủ công: sau mỗi lần chỉnh sửa quan trọng, bấm <strong>Tải file sao lưu</strong>, rồi <strong>upload file đó vào thư mục gốc của repo GitHub</strong> (cạnh server.js). Mỗi lần khởi động, server tự nạp lại từ file sao lưu mới nhất. Chỉnh sửa chưa được đưa lên GitHub sẽ mất khi server khởi động lại. Nút <strong>Khôi phục</strong> bên dưới vẫn dùng được khi cần khôi phục bằng tay.
               </div>
               {seedStatus && (
                 <div
                   style={{
                     fontSize: 12.5, lineHeight: 1.6, marginBottom: 12, padding: "8px 10px", borderRadius: 8,
-                    background: seedStatus.error ? "#FDECEA" : seedStatus.restored ? "#EAF5EC" : "#F3F1EC",
-                    color: seedStatus.error ? "#B3261E" : seedStatus.restored ? "#3D7A4E" : "#6B6255",
+                    background: seedStatus.error ? "#FDECEA" : seedStatus.restored ? "#EAF5EC" : "#eef4fb",
+                    color: seedStatus.error ? "#B3261E" : seedStatus.restored ? "#3D7A4E" : "#5b6b7e",
                   }}
                 >
                   {seedStatus.error ? (
@@ -2142,29 +2333,16 @@ function App() {
                 </div>
               )}
             </div>
-
-            <div style={card}>
-              <div style={sectionTitle}>💬 Câu chào mở đầu</div>
-              <textarea style={{ ...inputStyle, minHeight: 90, resize: "vertical" }} value={settingsForm.greeting} onChange={(e) => setSettingsForm({ ...settingsForm, greeting: e.target.value })} />
-
-              <div style={{ ...sectionTitle, marginTop: 18 }}>✉️ Email chuyên gia hỗ trợ (dự phòng)</div>
-              <div style={{ fontSize: 12.5, color: "#6B6255", marginBottom: 6 }}>Có thể kết nối Zalo OA sau (xem README). Trong lúc chưa có Zalo, câu hỏi chưa trả lời được sẽ gửi qua email này (nếu điền) hoặc chỉ lưu vào nhật ký bên dưới.</div>
-              <input style={inputStyle} type="email" placeholder="vd: hotro@congty.vn" value={settingsForm.expertEmail} onChange={(e) => setSettingsForm({ ...settingsForm, expertEmail: e.target.value })} />
-
-              <button onClick={saveSettings} style={primaryButtonStyle}>{settingsSaved ? "✅ Đã lưu" : "💾 Lưu cài đặt"}</button>
-              {adminError && <div style={{ marginTop: 10, fontSize: 12.5, color: "#B3261E" }}>{adminError}</div>}
-            </div>
-
             <div style={card}>
               <div style={sectionTitle}>✉️ Câu hỏi đã gửi chuyên gia ({escalations.length})</div>
               {escalations.length === 0 ? (
-                <div style={{ fontSize: 13, color: "#8A8272", fontStyle: "italic" }}>Chưa có câu hỏi nào.</div>
+                <div style={{ fontSize: 13, color: "#718096", fontStyle: "italic" }}>Chưa có câu hỏi nào.</div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {escalations.map((t) => (
-                    <div key={t.id} style={{ background: "#F3F1EC", borderRadius: 10, padding: "10px 12px" }}>
+                    <div key={t.id} style={{ background: "#eef4fb", borderRadius: 10, padding: "10px 12px" }}>
                       <div style={{ fontSize: 13.5, fontWeight: 600 }}>{t.question}</div>
-                      <div style={{ fontSize: 11, color: "#8A8272", marginTop: 2 }}>{new Date(t.timestamp).toLocaleString("vi-VN")} · Kênh: {t.sentVia}</div>
+                      <div style={{ fontSize: 11, color: "#718096", marginTop: 2 }}>{new Date(t.timestamp).toLocaleString("vi-VN")} · Kênh: {t.sentVia}</div>
                     </div>
                   ))}
                 </div>
@@ -2173,14 +2351,164 @@ function App() {
 
             <div style={card}>
               <div style={sectionTitle}>🔑 Mã quản trị</div>
-              <div style={{ fontSize: 12.5, color: "#6B6255", marginBottom: 6 }}>
+              <div style={{ fontSize: 12.5, color: "#5b6b7e", marginBottom: 6 }}>
                 Cần để sửa tài liệu / cài đặt (nếu server có bật ADMIN_TOKEN). Mỗi trình duyệt nhập 1 lần.
               </div>
               <input style={inputStyle} type="password" placeholder="Nhập mã quản trị nếu có" value={adminToken} onChange={(e) => saveAdminToken(e.target.value)} />
             </div>
-          </div>
-        )}
+            </div>
+          )}
+        </main>
       </div>
+
+      {(addOpen || editingId) && (
+        <div className="modal open" id="questionModal">
+          <section className="dialog wide">
+            <header className="dialog-head"><h2 id="questionDialogTitle">{editingId ? "Sửa câu hỏi" : "Thêm câu hỏi"}</h2><button type="button" className="close" aria-label="Đóng" onClick={() => (editingId ? cancelEdit() : closeAdd())}>×</button></header>
+            <div className="dialog-body">{renderQuestionFormFields(!!editingId)}</div>
+            <footer className="dialog-foot">
+              <button type="button" className="btn secondary" onClick={() => (editingId ? cancelEdit() : closeAdd())}>Hủy</button>
+              <button type="button" id="saveQuestion" className="btn" disabled={uploadingImage} onClick={editingId ? saveEditEntry : addEntry}>{uploadingImage ? "⏳ Đang tải ảnh..." : "Lưu"}</button>
+            </footer>
+          </section>
+        </div>
+      )}
+
+      {detailEntry && (
+        <div className="modal open" id="detailModal">
+          <section className="dialog wide">
+            <header className="dialog-head"><h2>Chi tiết câu hỏi</h2><button type="button" className="close" aria-label="Đóng" onClick={() => setDetailId(null)}>×</button></header>
+            <div className="dialog-body">
+              <div className="form-grid">
+                <div className="field wide"><span>Câu hỏi chuẩn</span><div style={{ fontSize: 16, fontWeight: 700 }}>{detailEntry.title}</div><div><span className="tag">{getCategoryLabel(detailEntry.category)}</span> {detailEntry.visible === false && <span className="status-badge ignored">Đang ẩn</span>} {detailEntry.visible !== false && detailEntry.suggested === true && <span className="status-badge ai">Câu hỏi gợi ý</span>}</div></div>
+                {Array.isArray(detailEntry.aliases) && detailEntry.aliases.length > 0 && (
+                  <div className="field wide"><span>Cách hỏi khác ({detailEntry.aliases.length})</span><div className="chips">{detailEntry.aliases.map((a, i) => <span key={i}>{a}</span>)}</div></div>
+                )}
+                <div className="field wide"><span>Câu trả lời</span><div className="answer-box">{renderFormattedBlock(detailEntry.content, "detail-" + detailEntry.id, setLightboxSrc)}</div></div>
+                {detailEntry.videoUrl && <div className="field wide"><span>Link video</span><a href={detailEntry.videoUrl} target="_blank" rel="noreferrer" style={{ color: "#076ab7", fontWeight: 600 }}>🎥 {detailEntry.videoUrl} ↗</a></div>}
+                {getGalleryImages(detailEntry).length > 0 && (
+                  <div className="field wide"><span>Ảnh đính kèm ({getGalleryImages(detailEntry).length})</span><div className="thumb-grid">{getGalleryImages(detailEntry).map((url, i) => <SafeImage key={i} src={url} alt={detailEntry.title} onClick={() => setLightboxSrc(url)} style={{ maxWidth: 220, maxHeight: 150, borderRadius: 6, border: "1px solid #dce4ed", cursor: "zoom-in" }} />)}</div></div>
+                )}
+              </div>
+            </div>
+            <footer className="dialog-foot">
+              <button type="button" className="btn secondary" onClick={() => setDetailId(null)}>Đóng</button>
+              {canEditKb && <button type="button" className="btn" data-detail-edit={detailEntry.id} onClick={() => { const e0 = detailEntry; setDetailId(null); startEdit(e0); }}>Sửa</button>}
+            </footer>
+          </section>
+        </div>
+      )}
+
+      {importOpen && (
+        <div className="modal open" id="importModal">
+          <section className="dialog">
+            <header className="dialog-head"><h2>Nhập dữ liệu</h2><button type="button" className="close" aria-label="Đóng" onClick={() => setImportOpen(false)}>×</button></header>
+            <div className="dialog-body">
+              <div className="seg">
+                <button type="button" className={importMode === "excel" ? "active" : ""} onClick={() => { setImportMode("excel"); setImportResult(null); }}>⇧ File Excel</button>
+                <button type="button" className={importMode === "paste" ? "active" : ""} onClick={() => { setImportMode("paste"); setImportResult(null); }}>📋 Dán từ Excel</button>
+              </div>
+              {importMode === "excel" ? (
+                <>
+                  <p className="hint" style={{ marginTop: 0, marginBottom: 12 }}>File Excel có các cột: <strong>Câu hỏi</strong> | <strong>Danh mục</strong> | <strong>Câu trả lời</strong> | <strong>Link video</strong> | <strong>Link ảnh</strong> | <strong>Cách hỏi khác</strong> (nhiều giá trị cách nhau bằng dấu |). Chỉ <strong>thêm mới</strong> vào danh sách hiện có.</p>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button type="button" className="btn secondary" onClick={downloadTemplate}>📄 Tải file mẫu</button>
+                    <input ref={fileInputRef} type="file" accept=".xlsx,.xls" hidden onChange={handleExcelFile} />
+                    <button type="button" className="btn" onClick={() => fileInputRef.current && fileInputRef.current.click()}>⬆️ Chọn file Excel</button>
+                  </div>
+                  {importResult && importResult.source === "excel" && (
+                    <div className={"note-line " + (importResult.error ? "err" : "ok")}>
+                      {importResult.error ? "Không đọc được dữ liệu hợp lệ từ file Excel." : `Đã nhập thành công ${importResult.added} mục từ file Excel.${importResult.skipped ? ` Bỏ qua ${importResult.skipped} dòng (trùng câu hỏi đã có trong Sheet hoặc thiếu nội dung).` : ""}`}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <p className="hint" style={{ marginTop: 0, marginBottom: 12 }}>Dán từ Excel: mỗi dòng 1 cặp, cách nhau bởi Tab — <strong>Câu hỏi</strong> [Tab] <strong>Mã danh mục</strong> [Tab] <strong>Câu trả lời</strong> [Tab] <strong>Link video</strong> [Tab] <strong>Link ảnh</strong>. Cột sau tuỳ chọn.</p>
+                  <div className="form-grid">
+                    <label className="field wide"><span>Danh mục mặc định</span><select value={bulkCategory} onChange={(e) => setBulkCategory(e.target.value)}>{allCategories.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}</select></label>
+                    <label className="field wide"><span>Dán dữ liệu vào đây</span><textarea style={{ minHeight: 150, fontFamily: "monospace", fontSize: 12.5 }} value={bulkText} onChange={(e) => { setBulkText(e.target.value); setImportResult(null); }} /></label>
+                  </div>
+                  <div style={{ marginTop: 12 }}><button type="button" className="btn" onClick={handleBulkImport}>📋 Nhập vào tài liệu</button></div>
+                  {importResult && importResult.source === "paste" && (
+                    <div className={"note-line " + (importResult.error ? "err" : "ok")}>
+                      {importResult.error ? "Không nhận diện được cặp Câu hỏi - Câu trả lời nào." : `Đã nhập thành công ${importResult.added} mục.${importResult.skipped ? ` Bỏ qua ${importResult.skipped} dòng (trùng câu hỏi đã có trong Sheet hoặc thiếu nội dung).` : ""}`}
+                    </div>
+                  )}
+                </>
+              )}
+              {adminError && <div className="inline-alert" style={{ marginTop: 12 }}>{adminError}</div>}
+            </div>
+            <footer className="dialog-foot"><button type="button" className="btn secondary" onClick={() => setImportOpen(false)}>Đóng</button></footer>
+          </section>
+        </div>
+      )}
+
+      {categoryOpen && (
+        <div className="modal open" id="categoryModal">
+          <section className="dialog" style={{ maxWidth: 500 }}>
+            <header className="dialog-head"><h2>Thêm danh mục</h2><button type="button" className="close" aria-label="Đóng" onClick={() => setCategoryOpen(false)}>×</button></header>
+            <div className="dialog-body">
+              <div className="form-grid">
+                <label className="field wide"><span>Tên danh mục *</span><input id="categoryName" placeholder="Ví dụ: KPI & xếp loại" value={categoryName} onChange={(e) => setCategoryName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addCustomCategory(); }} /></label>
+                {adminError && <div className="field wide"><div className="inline-alert">{adminError}</div></div>}
+              </div>
+            </div>
+            <footer className="dialog-foot">
+              <button type="button" className="btn secondary" onClick={() => setCategoryOpen(false)}>Hủy</button>
+              <button type="button" id="saveCategory" className="btn" onClick={addCustomCategory}>Lưu</button>
+            </footer>
+          </section>
+        </div>
+      )}
+
+      {aliasPicker && (
+        <div className="modal open" id="aliasPickerModal">
+          <section className="dialog alias-picker-dialog">
+            <header className="dialog-head"><h2>Chọn câu hỏi để thêm cách hỏi khác</h2><button type="button" className="close" aria-label="Đóng" onClick={() => setAliasPicker(null)}>×</button></header>
+            <div className="dialog-body alias-picker-body">
+              <div className="unanswered-note" style={{ margin: 0, borderRadius: 0 }}>Câu hỏi sẽ thêm: <strong>“{aliasPicker.rec.question}”</strong></div>
+              <div className="alias-picker-layout">
+                <aside className="alias-picker-side">
+                  <div className="tree-head"><b>Danh mục câu hỏi</b></div>
+                  <div className="tree">
+                    <div className={"tree-row all" + (apCat === "ALL" ? " selected" : "")} onClick={() => { setApCat("ALL"); setApPage(1); }}><span>Tất cả danh mục</span><span className="count">{kbEntries.length}</span></div>
+                    {allCategories.map((c) => (
+                      <div key={c.id} className={"tree-row" + (apCat === c.id ? " selected" : "")} data-alias-category={c.id} onClick={() => { setApCat(c.id); setApPage(1); }}><span>{c.label}</span><span className="count">{catCount(c.id)}</span></div>
+                    ))}
+                  </div>
+                </aside>
+                <section className="alias-picker-main">
+                  <div className="toolbar"><input id="aliasQuestionSearch" className="search" placeholder="Tìm câu hỏi, cách hỏi khác..." value={apSearch} onChange={(e) => { setApSearch(e.target.value); setApPage(1); }} /></div>
+                  <div className="table-wrap">
+                    <table className="table">
+                      <thead><tr><th>STT</th><th>Câu hỏi chuẩn</th><th>Danh mục</th><th>Cách hỏi khác</th><th>Thao tác</th></tr></thead>
+                      <tbody id="aliasQuestionRows">
+                        {apRows.length === 0 && <tr><td colSpan="5" className="empty">Không có câu hỏi phù hợp</td></tr>}
+                        {apRows.map((e, i) => (
+                          <tr key={e.id}>
+                            <td>{(apCur - 1) * apSize + i + 1}</td>
+                            <td><span className="question">{e.title}</span></td>
+                            <td><span className="tag">{getCategoryLabel(e.category)}</span></td>
+                            <td>{Array.isArray(e.aliases) ? e.aliases.length : 0}</td>
+                            <td><button type="button" className="add-alias-choice" data-choose-alias-question={e.id} onClick={() => chooseAliasTarget(e)}>Thêm</button></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="footerbar">
+                    <span>Mỗi trang <select className="page-size" value={apSize} onChange={(e) => { setApSize(Number(e.target.value)); setApPage(1); }}><option value="10">10</option><option value="20">20</option><option value="50">50</option></select> trong tổng số <b>{apFiltered.length}</b></span>
+                    <span className="pager">{renderPager(apCur, apPages, setApPage)}</span>
+                  </div>
+                </section>
+              </div>
+              <div className="alias-picker-note">{sheetReadOnly ? "Chế độ chỉ đọc (Google Sheet): app sẽ sao chép câu hỏi để bạn dán vào cột F của dòng đã chọn." : "Sau khi chọn, hộp thoại sửa câu hỏi sẽ mở với cách hỏi mới đã được thêm sẵn — bấm Lưu để áp dụng."}</div>
+            </div>
+            <footer className="dialog-foot"><button type="button" className="btn secondary" onClick={() => setAliasPicker(null)}>Hủy</button></footer>
+          </section>
+        </div>
+      )}
 
       {lightboxSrc && (
         <div
@@ -2210,12 +2538,13 @@ function App() {
           />
         </div>
       )}
+      <div id="toast" className={"toast" + (toastMsg ? " show" : "")} role="status">{toastMsg}</div>
     </div>
   );
 }
 
 function TabButton({ active, onClick, label }) {
-  return <button onClick={onClick} style={{ padding: "8px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, background: active ? "#F3F1EC" : "transparent", color: active ? "#12303F" : "#CBD8DD" }}>{label}</button>;
+  return <button onClick={onClick} style={{ padding: "8px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, background: active ? "#eef4fb" : "transparent", color: active ? "#076ab7" : "#CBD8DD" }}>{label}</button>;
 }
 // Ảnh minh hoạ có "tự bảo vệ": nếu load lỗi (VD file đã mất khỏi server sau khi Render deploy lại),
 // hiện rõ khung cảnh báo thay vì âm thầm biến mất — để người dùng biết ngay cần tải lại ảnh.
@@ -2225,7 +2554,7 @@ function SafeImage({ src, alt, onClick, style }) {
     return (
       <div
         title="Ảnh đã mất trên server, cần tải lại"
-        style={{ ...style, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#FFF3E0", color: "#B5652F", fontSize: 11, textAlign: "center", padding: 6, border: "1px dashed #E0A458", cursor: "default" }}
+        style={{ ...style, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#FFF3E0", color: "#076ab7", fontSize: 11, textAlign: "center", padding: 6, border: "1px dashed #E0A458", cursor: "default" }}
       >
         <span style={{ fontSize: 16 }}>⚠️</span>
         <span>Ảnh lỗi — cần tải lại</span>
@@ -2235,24 +2564,24 @@ function SafeImage({ src, alt, onClick, style }) {
   return <img src={src} alt={alt} onClick={onClick} style={style} onError={() => setBroken(true)} />;
 }
 function ModeButton({ active, onClick, label }) {
-  return <button onClick={onClick} style={{ flex: 1, padding: "8px 10px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 700, background: active ? "#FFFFFF" : "transparent", color: active ? "#12303F" : "#8A8272" }}>{label}</button>;
+  return <button onClick={onClick} style={{ flex: 1, padding: "8px 10px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 700, background: active ? "#FFFFFF" : "transparent", color: active ? "#076ab7" : "#718096" }}>{label}</button>;
 }
 function escalateBtn(escalated) {
-  return { border: "1px solid #DDD7C9", background: escalated ? "#EAF5EC" : "#FFFFFF", color: escalated ? "#3D7A4E" : "#B5652F", borderRadius: 999, padding: "5px 12px", fontSize: 12, fontWeight: 700, cursor: escalated ? "default" : "pointer" };
+  return { border: "1px solid #dce4ed", background: escalated ? "#EAF5EC" : "#FFFFFF", color: escalated ? "#3D7A4E" : "#076ab7", borderRadius: 999, padding: "5px 12px", fontSize: 12, fontWeight: 700, cursor: escalated ? "default" : "pointer" };
 }
 
-const card = { background: "#FFFFFF", border: "1px solid #DDD7C9", borderRadius: 14, padding: 20 };
+const card = { background: "#FFFFFF", border: "1px solid #dce4ed", borderRadius: 6, padding: 20 };
 const sectionTitle = { fontSize: 15, fontWeight: 700, marginBottom: 4 };
-const miniLabel = { fontSize: 10.5, fontWeight: 700, color: "#8A8272", textTransform: "uppercase", letterSpacing: "0.03em" };
-const pill = { display: "inline-block", fontSize: 11, color: "#B5652F", background: "#F6E9DE", borderRadius: 999, padding: "2px 8px", margin: "2px 0 8px" };
-const labelStyle = { display: "block", fontSize: 12, fontWeight: 600, color: "#6B6255", marginBottom: 5, marginTop: 12 };
-const inputStyle = { width: "100%", border: "1px solid #DDD7C9", borderRadius: 8, padding: "9px 11px", fontSize: 14, fontFamily: "inherit", marginBottom: 4, background: "#FCFBF8", outline: "none" };
-const primaryButtonStyle = { width: "100%", marginTop: 16, background: "#B5652F", color: "#FFFFFF", border: "none", borderRadius: 8, padding: 10, fontSize: 14, fontWeight: 700, cursor: "pointer" };
-const darkButton = { whiteSpace: "nowrap", background: "#12303F", color: "#FFFFFF", border: "none", borderRadius: 8, padding: "0 14px", height: 38, fontSize: 12.5, fontWeight: 700, cursor: "pointer" };
-const outlineButton = { whiteSpace: "nowrap", background: "#FFFFFF", color: "#12303F", border: "1px solid #DDD7C9", borderRadius: 8, padding: "0 14px", height: 38, fontSize: 12.5, fontWeight: 700, cursor: "pointer" };
-const formatToolbarBtn = { background: "#FFFFFF", color: "#12303F", border: "1px solid #DDD7C9", borderRadius: 6, width: 32, height: 28, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 };
-const bubbleUser = { maxWidth: "80%", background: "#12303F", color: "#F3F1EC", padding: "10px 14px", borderRadius: 14, borderBottomRightRadius: 4, fontSize: 14, lineHeight: 1.55, whiteSpace: "pre-wrap" };
-const bubbleAssistant = { maxWidth: "80%", background: "#F3F1EC", color: "#1E2A32", padding: "10px 14px", borderRadius: 14, borderBottomLeftRadius: 4, fontSize: 14, lineHeight: 1.55, whiteSpace: "pre-wrap" };
+const miniLabel = { fontSize: 10.5, fontWeight: 700, color: "#718096", textTransform: "uppercase", letterSpacing: "0.03em" };
+const pill = { display: "inline-block", fontSize: 11, color: "#076ab7", background: "#eaf4ff", borderRadius: 999, padding: "2px 8px", margin: "2px 0 8px" };
+const labelStyle = { display: "block", fontSize: 12, fontWeight: 600, color: "#5b6b7e", marginBottom: 5, marginTop: 12 };
+const inputStyle = { width: "100%", border: "1px solid #cbd7e4", borderRadius: 5, padding: "9px 10px", fontSize: 14, fontFamily: "inherit", marginBottom: 4, background: "#FFFFFF", outline: "none" };
+const primaryButtonStyle = { width: "100%", marginTop: 16, background: "#076ab7", color: "#FFFFFF", border: "none", borderRadius: 4, padding: 10, fontSize: 14, fontWeight: 600, cursor: "pointer" };
+const darkButton = { whiteSpace: "nowrap", background: "#076ab7", color: "#FFFFFF", border: "1px solid #076ab7", borderRadius: 4, padding: "0 14px", height: 38, fontSize: 13, fontWeight: 600, cursor: "pointer" };
+const outlineButton = { whiteSpace: "nowrap", background: "#FFFFFF", color: "#076ab7", border: "1px solid #1677c8", borderRadius: 4, padding: "0 14px", height: 38, fontSize: 13, fontWeight: 600, cursor: "pointer" };
+const formatToolbarBtn = { background: "#FFFFFF", color: "#076ab7", border: "1px solid #dce4ed", borderRadius: 6, width: 32, height: 28, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 };
+const bubbleUser = { maxWidth: "80%", background: "#076ab7", color: "#eef4fb", padding: "10px 14px", borderRadius: 14, borderBottomRightRadius: 4, fontSize: 14, lineHeight: 1.55, whiteSpace: "pre-wrap" };
+const bubbleAssistant = { maxWidth: "80%", background: "#eef4fb", color: "#263447", padding: "10px 14px", borderRadius: 14, borderBottomLeftRadius: 4, fontSize: 14, lineHeight: 1.55, whiteSpace: "pre-wrap" };
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
 </script>
