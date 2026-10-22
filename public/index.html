@@ -82,7 +82,7 @@
 .chat-panel .pbody h2{font-size:24px;color:#397ce6;line-height:1.4;margin:0 0 10px}
 .chat-panel .pbody>p{color:#858f9b;line-height:1.55;margin:0 0 20px}
 .quick{display:grid;grid-template-columns:1fr 1fr;gap:10px;text-align:left}
-.quick button{padding:9px 12px;background:#fff;border:1px solid #e0e6ed;border-radius:18px;color:#566372;font-size:12px;font-weight:700;line-height:1.4;text-align:left}.quick button span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.quick button{padding:9px 12px;background:#fff;border:1px solid #e0e6ed;border-radius:18px;color:#566372;font-size:12px;font-weight:700;line-height:1.4;text-align:left}.quick button span{display:block;overflow-wrap:anywhere;white-space:normal}
 .quick button:hover{border-color:#3489e7;color:#1676d3}
 .messages{text-align:left;margin:16px 0}
 .msg{font-size:13px;padding:10px 12px;border-radius:10px 10px 2px 10px;background:#eaf3ff;margin:8px 0 8px auto;width:max-content;max-width:88%;line-height:1.5;word-break:break-word}
@@ -122,7 +122,12 @@
 @media(max-width:1100px){.conversation-form{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:740px){.settings-stack{grid-template-columns:minmax(0,1fr)}}
 
-.demo-frame{--blue:#0869b6;--blue2:#087cdb;--bg:#f3f6fc;--text:#273445;--muted:#697789;--line:#d9e1eb;--red:#ed5961;position:relative;width:100%;height:clamp(520px,calc(100vh - 170px),1200px);overflow:hidden;border:1px solid #cfd9e5;border-radius:8px;background:#f4f6fa;color:#273445;font:14px Arial,sans-serif;box-shadow:0 4px 18px #173d6314}
+/* hộp chọn nhiều câu hỏi mở đầu */
+.dialog-foot .ap-count{margin-right:auto;color:#5b6b7e;font-size:13px}
+.ap-existing{background:#f7f9fb;color:#8a97a8}.ap-badge{margin-left:8px;padding:1px 8px;border-radius:10px;background:#e8edf3;color:#5b6b7e;font-size:11.5px;font-weight:600}
+.alias-picker-main .table input[type=checkbox]{width:17px;height:17px;cursor:pointer}.alias-picker-main .table input[type=checkbox]:disabled{cursor:not-allowed}
+
+.demo-frame{--blue:#0869b6;--blue2:#087cdb;--bg:#f3f6fc;--text:#273445;--muted:#697789;--line:#d9e1eb;--red:#ed5961;position:relative;width:100%;height:clamp(640px,calc(100vh - 110px),1300px);overflow:hidden;border:1px solid #cfd9e5;border-radius:8px;background:#f4f6fa;color:#273445;font:14px Arial,sans-serif;box-shadow:0 4px 18px #173d6314}
 .demo-frame *{box-sizing:border-box}
 .demo-frame button,.demo-frame input,.demo-frame select{font:inherit}
 .demo-frame .demo-shot{display:block;width:100%;height:100%;object-fit:cover;object-position:left top;user-select:none;-webkit-user-drag:none}
@@ -132,7 +137,7 @@
 .demo-frame .d-tip{position:absolute;right:73px;white-space:nowrap;background:#263442;color:#fff;border-radius:5px;padding:8px 10px;font-size:12px;opacity:0;transition:.2s;pointer-events:none}
 .demo-frame .d-chat-fab:hover .d-tip{opacity:1}
 .demo-frame .d-chat-fab.dragging{cursor:grabbing}
-.demo-frame .chat-panel.popup{position:absolute;z-index:19;right:20px;bottom:100px;width:min(400px,calc(100% - 40px));height:min(580px,calc(100% - 124px));min-height:0;margin:0;border-radius:12px;box-shadow:0 10px 36px #173d6338;opacity:0;visibility:hidden;transform:translateY(14px) scale(.98);transform-origin:bottom right;transition:opacity .2s,transform .2s,visibility 0s .2s}
+.demo-frame .chat-panel.popup{position:absolute;z-index:19;right:20px;bottom:100px;width:min(560px,calc(100% - 40px));height:min(880px,calc(100% - 116px));min-height:0;margin:0;border-radius:12px;box-shadow:0 10px 36px #173d6338;opacity:0;visibility:hidden;transform:translateY(14px) scale(.98);transform-origin:bottom right;transition:opacity .2s,transform .2s,visibility 0s .2s}
 .demo-frame .chat-panel.popup.open{opacity:1;visibility:visible;transform:none;transition:opacity .2s,transform .2s}
 .chat-panel .phead .pclose{border:0;background:none;font-size:26px;line-height:1;color:#8290a0;padding:0 2px}.chat-panel .phead .pclose:hover{color:#506174}
 @media(max-width:740px){.demo-frame{height:600px}.demo-frame .chat-panel.popup{right:10px;width:calc(100% - 20px)}}
@@ -141,6 +146,9 @@
 .demo-bar .btn{flex:0 0 auto;height:34px;padding:0 14px}
 .demo-frame.full{position:fixed;inset:0;z-index:1000;width:100vw;height:100vh;border:0;border-radius:0;box-shadow:none}
 .demo-exit{position:absolute;left:16px;bottom:16px;z-index:30;height:34px;padding:0 14px;border:1px solid #1677c8;border-radius:4px;background:#fff;color:#076ab7;font-weight:700;box-shadow:0 2px 8px #173d6326}
+
+/* popup lớn: chữ trong khung chat rộng rãi hơn */
+.demo-frame .chat-panel.popup .pbody h2{font-size:27px}.demo-frame .chat-panel.popup .pbody{padding:34px 28px 18px}.demo-frame .chat-panel.popup .msg{font-size:14px}.demo-frame .chat-panel.popup .quick button{font-size:13px}.demo-frame .chat-panel.popup .answer-options button{font-size:14px}
 
 </style>
 </head>
@@ -656,6 +664,7 @@ function App() {
   const [fabDragging, setFabDragging] = useState(false);
   const demoRef = useRef(null);
   const fabDrag = useRef({ active: false, moved: false, sx: 0, sy: 0, sr: 0, sb: 0 });
+  const [apSelected, setApSelected] = useState(() => new Set());
   const [demoFull, setDemoFull] = useState(false);
   useEffect(() => {
     if (!demoFull) return undefined;
@@ -1812,6 +1821,37 @@ function App() {
   });
 
   // ===== Hàm cho giao diện mới =====
+  // Hộp chọn nhiều câu hỏi mở đầu: ô tick từng câu / cả trang, chặn trùng, không vượt số chỗ còn trống
+  function toggleApSelected(id) {
+    setApSelected((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id);
+      else if (n.size < OQ_MAX - oqList.length) n.add(id);
+      return n;
+    });
+  }
+  function selectApPage(checked) {
+    setApSelected((prev) => {
+      const n = new Set(prev);
+      const slots = OQ_MAX - oqList.length;
+      const have = new Set(oqList.map((q) => String(q.question || "").trim().toLowerCase()));
+      apRows.forEach((e) => {
+        if (!checked) n.delete(e.id);
+        else if (!have.has(e.title.trim().toLowerCase()) && n.size < slots) n.add(e.id);
+      });
+      return n;
+    });
+  }
+  function confirmOpeningPicks() {
+    const slots = OQ_MAX - oqList.length;
+    const have = new Set(oqList.map((q) => String(q.question || "").trim().toLowerCase()));
+    const picked = kbEntries.filter((e) => apSelected.has(e.id) && !have.has(e.title.trim().toLowerCase())).slice(0, slots);
+    setAliasPicker(null);
+    setApSelected(new Set());
+    if (picked.length === 0) return;
+    setOqList([...oqList, ...picked.map((e) => ({ label: "", question: e.title }))]);
+    toast("Đã thêm " + picked.length + " câu hỏi mở đầu. Nhớ bấm Lưu cấu hình");
+  }
   // Câu hỏi mở đầu (nút bấm dưới lời chào khi mở chat): lưu trong cài đặt hội thoại
   function setOqList(list) { setSettingsForm((p) => ({ ...p, openingQuestions: list })); setSettingsSaved(false); }
   function addOpeningQuestion() { if (oqList.length < OQ_MAX) setOqList([...oqList, { label: "", question: "" }]); }
@@ -2104,11 +2144,15 @@ function App() {
   const unRows = filteredUnanswered.slice((unCur - 1) * unSize, unCur * unSize);
   const allUnSelected = filteredUnanswered.length > 0 && filteredUnanswered.every((u) => selectedUn.has(u.id));
   const greetParts = splitGreeting(settings.greeting || DEFAULT_GREETING);
+  const apOpening = !!(aliasPicker && aliasPicker.mode === "opening");
+  const apSlots = Math.max(0, OQ_MAX - oqList.length);
+  const apExisting = new Set(oqList.map((q) => String(q.question || "").trim().toLowerCase()));
   const apKey = apSearch.trim().toLowerCase();
   const apFiltered = kbEntries.filter((e) => (apCat === "ALL" || e.category === apCat) && (!apKey || (e.title + " " + (e.aliases || []).join(" ")).toLowerCase().includes(apKey)));
   const apPages = Math.max(1, Math.ceil(apFiltered.length / apSize));
   const apCur = Math.min(apPage, apPages);
   const apRows = apFiltered.slice((apCur - 1) * apSize, apCur * apSize);
+  const apPageAllSelected = apRows.length > 0 && apRows.every((e) => apSelected.has(e.id) || apExisting.has(e.title.trim().toLowerCase())) && apRows.some((e) => apSelected.has(e.id));
 
   return (
     <div>
@@ -2324,7 +2368,7 @@ function App() {
                   <div className="alias-head">
                     <span>Câu hỏi mở đầu</span>
                     <span style={{ display: "inline-flex", gap: 6 }}>
-                      <button type="button" id="oqPick" className="btn secondary alias-add" onClick={() => { setApCat("ALL"); setApSearch(""); setApPage(1); setAliasPicker({ mode: "opening" }); }}>Chọn từ thư viện</button>
+                      <button type="button" id="oqPick" className="btn secondary alias-add" onClick={() => { setApCat("ALL"); setApSearch(""); setApPage(1); setApSelected(new Set()); setAliasPicker({ mode: "opening" }); }}>Chọn từ thư viện</button>
                       <button type="button" id="oqAdd" className="btn secondary alias-add" disabled={oqList.length >= OQ_MAX} onClick={addOpeningQuestion}>＋ Thêm câu hỏi</button>
                     </span>
                   </div>
@@ -2616,16 +2660,28 @@ function App() {
                   <div className="toolbar"><input id="aliasQuestionSearch" className="search" placeholder="Tìm câu hỏi, cách hỏi khác..." value={apSearch} onChange={(e) => { setApSearch(e.target.value); setApPage(1); }} /></div>
                   <div className="table-wrap">
                     <table className="table">
-                      <thead><tr><th>STT</th><th>Câu hỏi chuẩn</th><th>Danh mục</th><th>Cách hỏi khác</th><th>Thao tác</th></tr></thead>
+                      <thead><tr>
+                        {apOpening && <th style={{ width: 40 }}><input type="checkbox" id="apSelectPage" aria-label="Chọn các câu trên trang này" checked={apPageAllSelected} disabled={apRows.length === 0} onChange={(ev) => selectApPage(ev.target.checked)} /></th>}
+                        <th>STT</th><th>Câu hỏi chuẩn</th><th>Danh mục</th><th>Cách hỏi khác</th>{!apOpening && <th>Thao tác</th>}
+                      </tr></thead>
                       <tbody id="aliasQuestionRows">
-                        {apRows.length === 0 && <tr><td colSpan="5" className="empty">Không có câu hỏi phù hợp</td></tr>}
+                        {apRows.length === 0 && <tr><td colSpan="6" className="empty">Không có câu hỏi phù hợp</td></tr>}
                         {apRows.map((e, i) => (
-                          <tr key={e.id}>
+                          <tr key={e.id} className={apOpening && apExisting.has(e.title.trim().toLowerCase()) ? "ap-existing" : ""}>
+                            {apOpening && (
+                              <td>
+                                <input type="checkbox" data-pick-opening={e.id} aria-label={"Chọn câu hỏi " + e.title}
+                                  checked={apSelected.has(e.id) || apExisting.has(e.title.trim().toLowerCase())}
+                                  disabled={apExisting.has(e.title.trim().toLowerCase()) || (!apSelected.has(e.id) && apSelected.size >= apSlots)}
+                                  title={apExisting.has(e.title.trim().toLowerCase()) ? "Đã có trong danh sách câu hỏi mở đầu" : undefined}
+                                  onChange={() => toggleApSelected(e.id)} />
+                              </td>
+                            )}
                             <td>{(apCur - 1) * apSize + i + 1}</td>
-                            <td><span className="question">{e.title}</span></td>
+                            <td><span className="question">{e.title}</span>{apOpening && apExisting.has(e.title.trim().toLowerCase()) && <span className="ap-badge">Đã có</span>}</td>
                             <td><span className="tag">{getCategoryLabel(e.category)}</span></td>
                             <td>{Array.isArray(e.aliases) ? e.aliases.length : 0}</td>
-                            <td><button type="button" className="add-alias-choice" data-choose-alias-question={e.id} onClick={() => chooseAliasTarget(e)}>{aliasPicker.mode === "opening" ? "Chọn" : "Thêm"}</button></td>
+                            {!apOpening && <td><button type="button" className="add-alias-choice" data-choose-alias-question={e.id} onClick={() => chooseAliasTarget(e)}>Thêm</button></td>}
                           </tr>
                         ))}
                       </tbody>
@@ -2637,9 +2693,13 @@ function App() {
                   </div>
                 </section>
               </div>
-              <div className="alias-picker-note">{aliasPicker.mode === "opening" ? "Câu được chọn sẽ thành một nút câu hỏi mở đầu trong khung chat (nhớ bấm Lưu cấu hình)." : sheetReadOnly ? "Chế độ chỉ đọc (Google Sheet): app sẽ sao chép câu hỏi để bạn dán vào cột F của dòng đã chọn." : "Sau khi chọn, hộp thoại sửa câu hỏi sẽ mở với cách hỏi mới đã được thêm sẵn — bấm Lưu để áp dụng."}</div>
+              <div className="alias-picker-note">{aliasPicker.mode === "opening" ? "Tick chọn nhiều câu cùng lúc, rồi bấm \"Thêm các câu đã chọn\". Các câu được chọn sẽ thành nút câu hỏi mở đầu trong khung chat (nhớ bấm Lưu cấu hình)." : sheetReadOnly ? "Chế độ chỉ đọc (Google Sheet): app sẽ sao chép câu hỏi để bạn dán vào cột F của dòng đã chọn." : "Sau khi chọn, hộp thoại sửa câu hỏi sẽ mở với cách hỏi mới đã được thêm sẵn — bấm Lưu để áp dụng."}</div>
             </div>
-            <footer className="dialog-foot"><button type="button" className="btn secondary" onClick={() => setAliasPicker(null)}>Hủy</button></footer>
+            <footer className="dialog-foot">
+              {apOpening && <span className="ap-count" id="apCount">Đã chọn {apSelected.size} / còn trống {apSlots} chỗ (tối đa {OQ_MAX} câu hỏi mở đầu)</span>}
+              <button type="button" className="btn secondary" onClick={() => setAliasPicker(null)}>Hủy</button>
+              {apOpening && <button type="button" className="btn" id="oqPickConfirm" disabled={apSelected.size === 0} onClick={confirmOpeningPicks}>{apSelected.size > 0 ? "Thêm " + apSelected.size + " câu đã chọn" : "Thêm các câu đã chọn"}</button>}
+            </footer>
           </section>
         </div>
       )}
