@@ -121,8 +121,7 @@ function getGalleryImages(entry) {
   return all.filter((u) => !content.includes(u));
 }
 
-const DEFAULT_GREETING =
-  "Chào bạn, tôi là chatbot hỗ trợ phần mềm. Hãy đặt câu hỏi, tôi sẽ trả lời dựa trên tài liệu hướng dẫn đã được nạp.";
+const DEFAULT_GREETING = "Xin chào! Tôi có thể giúp gì cho bạn? Đặt câu hỏi cho tôi để được hỗ trợ nhanh.";
 const ESCALATION_MARKER = "[CẦN_CHUYÊN_GIA]";
 
 // ---------- Tự nạp lại dữ liệu từ file sao lưu nằm sẵn trong GitHub ----------
