@@ -217,7 +217,7 @@ let kb = readJson(KB_FILE, {
   ],
 });
 const DEFAULT_NO_RESULT = "Không tìm thấy nội dung bạn đang tìm kiếm trong tài liệu. Bạn thử diễn đạt khác đi hoặc liên hệ chuyên gia để được tư vấn rõ nhất.";
-let settings = { greeting: DEFAULT_GREETING, expertEmail: "", noResultMessage: DEFAULT_NO_RESULT, customCategories: [], ...readJson(SETTINGS_FILE, {}) };
+let settings = { greeting: DEFAULT_GREETING, expertEmail: "", noResultMessage: DEFAULT_NO_RESULT, customCategories: [], openingQuestions: null, ...readJson(SETTINGS_FILE, {}) };
 let escalations = readJson(ESCALATIONS_FILE, []);
 let zaloTokens = readJson(TOKEN_FILE, null);
 let zaloConfig = readJson(ZALO_CONFIG_FILE, { expertUserId: null, recentSenders: [] });
@@ -805,6 +805,9 @@ async function callSheetScript(payload) {
       headers: { "Content-Type": "text/plain;charset=utf-8" },
     });
   } catch (e) {
+    if (e.response && (e.response.status === 401 || e.response.status === 403)) {
+      throw new SheetWriteError(502, `Google Apps Script từ chối truy cập (mã ${e.response.status}). Nguyên nhân thường gặp: lúc triển khai ô "Người có quyền truy cập" chưa chọn "Bất kỳ ai" (đang là "Chỉ mình tôi" hoặc "Bất kỳ ai có Tài khoản Google"), hoặc đã sửa script nhưng chưa triển khai PHIÊN BẢN MỚI. Cách sửa: trong Apps Script chọn Triển khai → Quản lý các bản triển khai → biểu tượng bút chì → Phiên bản: Phiên bản mới, Người có quyền truy cập: Bất kỳ ai → Triển khai (URL /exec giữ nguyên). Dữ liệu CHƯA được ghi.`);
+    }
     if (e.response) throw new SheetWriteError(502, `Google Apps Script trả lỗi (mã ${e.response.status}). Dữ liệu CHƯA được ghi. Kiểm tra lại URL và cách triển khai script (Ứng dụng web, quyền truy cập "Bất kỳ ai").`);
     throw new SheetWriteError(502, "Không kết nối được tới Google Apps Script. Dữ liệu CHƯA được ghi, hãy thử lại sau.");
   }
@@ -1120,12 +1123,19 @@ app.get("/api/settings", (req, res) => {
 });
 
 app.put("/api/settings", requireAdmin, (req, res) => {
-  const { greeting, expertEmail, noResultMessage, customCategories } = req.body;
+  const { greeting, expertEmail, noResultMessage, customCategories, openingQuestions } = req.body;
   settings = {
     ...settings,
     greeting: greeting !== undefined ? greeting : settings.greeting,
     expertEmail: expertEmail !== undefined ? expertEmail : settings.expertEmail,
     noResultMessage: noResultMessage !== undefined ? String(noResultMessage).slice(0, 2000) : settings.noResultMessage,
+    // Câu hỏi mở đầu (nút bấm dưới lời chào): [{ label, question }]. Không gửi lên = giữ nguyên; null = quay về dùng câu có cờ "gợi ý".
+    openingQuestions: Array.isArray(openingQuestions)
+      ? openingQuestions
+          .map((q) => ({ label: String((q && q.label) || "").trim().slice(0, 120), question: String((q && q.question) || "").trim().slice(0, 300) }))
+          .filter((q) => q.question)
+          .slice(0, 12)
+      : openingQuestions === null ? null : settings.openingQuestions,
     // Danh mục tự tạo (chỉ cần giữ danh mục CHƯA có câu hỏi nào; danh mục đã có câu hỏi tự suy ra từ dữ liệu)
     customCategories: Array.isArray(customCategories)
       ? [...new Set(customCategories.map((c) => String(c || "").replace(/[\r\n|]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 100)).filter(Boolean))].slice(0, 100)
