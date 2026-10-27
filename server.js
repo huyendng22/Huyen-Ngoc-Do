@@ -44,6 +44,14 @@ if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR);
 app.use("/uploads", express.static(UPLOADS_DIR));
 // Chấp nhận cả ảnh đặt THẲNG trong thư mục public/ của repo (khi kéo từng file ảnh lên GitHub thay vì kéo cả thư mục uploads):
 // địa chỉ /uploads/ten.png vẫn tìm ra public/ten.png. Chỉ nhận file ảnh, chỉ lấy theo tên file (không đi ra ngoài thư mục public).
+// Tương tự cho ảnh giao diện (mascot...): /assets/ten.gif tìm ra public/assets/ten.gif, hoặc public/ten.gif nếu lỡ đặt thẳng trong public/
+app.get("/assets/:filename", (req, res, next) => {
+  const base = path.basename(req.params.filename);
+  if (!/\.(png|jpe?g|gif|webp|svg)$/i.test(base)) return next();
+  const f = path.join(__dirname, "public", base);
+  if (fs.existsSync(f)) return res.sendFile(f);
+  next();
+});
 app.get("/uploads/:filename", (req, res, next) => {
   const base = path.basename(req.params.filename);
   if (!/\.(png|jpe?g|gif|webp|svg)$/i.test(base)) return next();
